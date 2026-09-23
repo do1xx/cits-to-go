@@ -3,349 +3,304 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CITS-to-go – Ampeldaten mit ESP32-C5 und iPhone empfangen</title>
-<meta name="description" content="Flashe deinen ESP32-C5 im Browser, installiere die App und empfange C-ITS-Nachrichten von Ampeln und Fahrzeugen live auf dem iPhone.">
+<title>CITS-to-go – Dokumentation und Webflasher</title>
+<meta name="description" content="C-ITS-Empfänger auf Basis des ESP32-C5 mit iOS-App: Firmware im Browser flashen, iPhone koppeln, Nutzung und technische Details.">
 <link rel="icon" href="img/icon.png">
 <link rel="apple-touch-icon" href="img/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10.4.0/dist/web/install-button.js"></script>
 <style>
   :root {
-    --sign: #0b4f8a;
-    --sign-deep: #083b68;
-    --white: #f7f8f6;
-    --paper: #ffffff;
-    --asphalt: #22272b;
-    --muted: #5b6670;
-    --rule: #d9dee2;
-    --red: #d7261e;
-    --amber: #f2a900;
-    --green: #1e9e4a;
-    --lamp-off: #3a4148;
-    --measure: 38rem;
+    --ink: #1f2428;
+    --muted: #5d6770;
+    --faint: #8a949c;
+    --rule: #dfe3e6;
+    --bg: #ffffff;
+    --tint: #f4f6f7;
+    --accent: #0b4f8a;
+    --accent-deep: #083b68;
+    --red: #c4231c;
+    --amber: #b77f00;
+    --green: #1c8a43;
+    --mono: "Overpass Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0;
-    font-family: "Overpass", system-ui, sans-serif;
-    font-size: 1.0625rem;
-    line-height: 1.55;
-    color: var(--asphalt);
-    background: var(--white);
-  }
-  a { color: var(--sign); text-underline-offset: 0.18em; }
-  a:focus-visible, button:focus-visible, summary:focus-visible {
-    outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 4px;
-  }
-  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.25rem; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 4.5rem; }
+  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1.0625rem; line-height: 1.6; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+  a:hover { color: var(--accent-deep); }
+  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; border-radius: 3px; }
+  code, .mono { font-family: var(--mono); font-size: 0.9em; }
+  :not(pre) > code { background: var(--tint); border: 1px solid var(--rule); padding: 0.05em 0.35em; border-radius: 0.25rem; }
+  pre { font-family: var(--mono); font-size: 0.88rem; background: var(--tint); border: 1px solid var(--rule); border-radius: 0.4rem; padding: 0.9rem 1rem; overflow-x: auto; line-height: 1.5; }
 
-  /* Hero: a road sign with a live signal head */
-  .hero { background: var(--sign); color: var(--white); overflow: hidden; }
-  .hero .wrap {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3rem;
-    align-items: center; padding-top: 3.5rem; padding-bottom: 4rem;
-  }
-  .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.05rem; margin-bottom: 2.75rem; }
-  .brand img { width: 2rem; height: 2rem; border-radius: 0.5rem; }
-  .hero h1 {
-    font-weight: 900; font-size: clamp(2.4rem, 5.4vw, 4.2rem);
-    line-height: 0.98; letter-spacing: -0.02em; margin: 0 0 1.4rem; max-width: 13ch;
-  }
-  .hero p { font-size: 1.2rem; max-width: 34rem; margin: 0 0 2rem; color: #dce8f3; }
-  .hero .cta {
-    display: inline-block; background: var(--white); color: var(--sign-deep);
-    font-weight: 800; text-decoration: none; padding: 0.85rem 1.4rem; border-radius: 0.4rem;
-  }
-  .hero .cta:hover { background: #fff; }
+  /* Top bar */
+  .topbar { position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.96); backdrop-filter: blur(6px); border-bottom: 1px solid var(--rule); }
+  .topbar .inner { max-width: 74rem; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; align-items: center; gap: 1.5rem; }
+  .logo { display: flex; align-items: center; gap: 0.55rem; font-weight: 800; color: var(--ink); text-decoration: none; }
+  .logo img { width: 1.7rem; height: 1.7rem; border-radius: 0.4rem; }
+  .topbar nav { margin-left: auto; display: flex; gap: 1.25rem; font-size: 0.95rem; }
+  .topbar nav a { color: var(--muted); text-decoration: none; }
+  .topbar nav a:hover { color: var(--ink); }
 
-  .signal { display: flex; align-items: center; gap: 1.1rem; }
-  .head {
-    background: var(--asphalt); border: 4px solid #4a535b; border-radius: 1.6rem;
-    padding: 1rem; display: grid; gap: 0.8rem;
-  }
-  .lamp { width: 4.6rem; height: 4.6rem; border-radius: 50%; background: var(--lamp-off); transition: background-color .25s, box-shadow .25s; }
-  .lamp.on.r { background: var(--red); box-shadow: 0 0 2.4rem rgba(215, 38, 30, .65); }
-  .lamp.on.a { background: var(--amber); box-shadow: 0 0 2.4rem rgba(242, 169, 0, .6); }
-  .lamp.on.g { background: var(--green); box-shadow: 0 0 2.4rem rgba(30, 158, 74, .65); }
-  .countdown {
-    font-weight: 900; font-size: 1.6rem; color: #fff; padding: 0.35rem 0.75rem;
-    border-radius: 0.45rem; min-width: 4.4rem; text-align: center; font-variant-numeric: tabular-nums;
-    background: var(--green); transition: background-color .25s;
-  }
-  .countdown small { display: block; font-size: 0.72rem; font-weight: 600; opacity: .9; }
+  /* Layout: sticky table of contents + article */
+  .layout { max-width: 74rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 3.5rem; }
+  .toc { position: sticky; top: 5rem; align-self: start; font-size: 0.93rem; }
+  .toc p { font-weight: 700; margin: 0 0 0.5rem; }
+  .toc ol { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--rule); }
+  .toc a { display: block; padding: 0.25rem 0 0.25rem 0.85rem; margin-left: -2px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; }
+  .toc a:hover { color: var(--ink); }
+  .toc a.active { color: var(--accent); border-left-color: var(--accent); }
+  article { max-width: 44rem; }
 
-  /* Steps along a signal pole */
-  main section { padding: 4.5rem 0; }
-  h2 { font-weight: 900; font-size: clamp(1.8rem, 3.4vw, 2.5rem); line-height: 1.05; letter-spacing: -0.015em; margin: 0 0 0.6rem; }
-  .lede { color: var(--muted); max-width: var(--measure); margin: 0 0 3rem; font-size: 1.15rem; }
-  .steps { list-style: none; margin: 0; padding: 0; position: relative; }
-  .steps::before {
-    content: ""; position: absolute; left: 1.45rem; top: 1.5rem; bottom: 1.5rem;
-    width: 0.5rem; background: var(--rule); border-radius: 0.25rem;
-  }
-  .step { position: relative; display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: 1.5rem; padding-bottom: 3.5rem; }
-  .step:last-child { padding-bottom: 0; }
-  .marker {
-    position: relative; z-index: 1; width: 3.4rem; height: 3.4rem; border-radius: 50%;
-    background: var(--asphalt); color: var(--white); display: grid; place-items: center;
-    font-weight: 900; font-size: 1.3rem; border: 4px solid var(--white); transition: background-color .3s;
-  }
-  .step.done .marker { background: var(--green); }
-  .step.done .marker span { display: none; }
-  .step.done .marker::after { content: "✓"; }
-  .step h3 { font-size: 1.5rem; font-weight: 800; margin: 0.55rem 0 0.5rem; line-height: 1.15; }
-  .step p { max-width: var(--measure); margin: 0 0 1rem; }
-  .needs { color: var(--muted); font-size: 0.97rem; }
+  h1 { font-size: 2.3rem; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em; margin: 0 0 0.9rem; }
+  h2 { font-size: 1.55rem; font-weight: 800; line-height: 1.2; margin: 3.5rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.15rem; font-weight: 700; margin: 2rem 0 0.5rem; }
+  p, ul, ol { margin: 0 0 1rem; }
+  .intro { font-size: 1.15rem; color: var(--muted); }
 
-  .panel { background: var(--paper); border: 1px solid var(--rule); border-radius: 0.6rem; padding: 1.4rem; max-width: 40rem; }
-  .panel ol { margin: 0; padding-left: 1.2rem; }
-  .panel li + li { margin-top: 0.35rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1.25rem 0 1.5rem; font-size: 0.97rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.8rem 0.55rem 0; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 700; color: var(--muted); width: 32%; }
+  thead th { color: var(--ink); width: auto; border-bottom: 2px solid var(--rule); }
 
-  .btn {
-    font: inherit; font-weight: 800; cursor: pointer; border: 0; border-radius: 0.4rem;
-    padding: 0.85rem 1.4rem; background: var(--sign); color: #fff; font-size: 1.05rem;
+  /* Setup steps: a real sequence, so numbered */
+  .step { position: relative; padding: 0 0 0.5rem 3rem; margin-top: 2.25rem; }
+  .step::before {
+    content: attr(data-n); position: absolute; left: 0; top: 0.05rem; width: 2rem; height: 2rem; border-radius: 50%;
+    background: var(--ink); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 0.95rem;
   }
-  .btn:hover { background: var(--sign-deep); }
-  .btn:disabled { opacity: .55; cursor: default; }
-  esp-web-install-button button[slot="activate"] { }
-  .status { margin-top: 1rem; font-weight: 600; min-height: 1.5em; max-width: var(--measure); }
+  .step.done::before { content: "✓"; background: var(--green); }
+  .step h3 { margin-top: 0.1rem; }
+  .tool { border: 1px solid var(--rule); border-radius: 0.5rem; padding: 1.1rem 1.2rem; background: var(--tint); margin: 1rem 0; }
+  .tool .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
+  .btn { font: inherit; font-weight: 700; font-size: 1rem; cursor: pointer; border: 0; border-radius: 0.35rem; padding: 0.7rem 1.15rem; background: var(--accent); color: #fff; text-decoration: none; display: inline-block; }
+  .btn:hover { background: var(--accent-deep); color: #fff; }
+  .btn:disabled { background: #9aa5ae; cursor: default; }
+  .btn.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  .meta { color: var(--muted); font-size: 0.92rem; }
+  .check { color: var(--muted); font-size: 0.92rem; display: inline-flex; align-items: center; gap: 0.4rem; }
+  .status { margin: 0.8rem 0 0; font-weight: 600; min-height: 1.4em; }
   .status.ok { color: var(--green); }
   .status.err { color: var(--red); }
-  .status.wait { color: var(--sign); }
-  .timer { font-variant-numeric: tabular-nums; font-weight: 900; }
+  .status.wait { color: var(--accent); }
+  .timer { font-variant-numeric: tabular-nums; font-weight: 800; }
 
-  .store { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.25rem 0 1rem; }
-  .store a { display: inline-block; font-weight: 800; text-decoration: none; padding: 0.75rem 1.2rem; border-radius: 0.4rem; border: 2px solid var(--sign); }
-  .store a.primary { background: var(--sign); color: #fff; }
+  .note { border-left: 3px solid var(--amber); background: #fbf6ea; padding: 0.75rem 1rem; border-radius: 0 0.3rem 0.3rem 0; margin: 1rem 0 1.5rem; font-size: 0.97rem; }
+  .figure { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 1.75rem; align-items: start; margin: 1.25rem 0; }
+  .figure img { width: 100%; border: 1px solid var(--rule); border-radius: 1.1rem; display: block; }
+  .phase { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-right: 0.4rem; vertical-align: 0.05em; }
 
-  /* What you see */
-  .see { background: var(--asphalt); color: var(--white); }
-  .see .lede { color: #b9c2ca; }
-  .see-grid { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 1fr); gap: 3.5rem; align-items: start; }
-  .see img { width: 100%; border-radius: 1.6rem; border: 6px solid #3a4148; display: block; }
-  .tabs { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.6rem; }
-  .tabs strong { display: block; font-size: 1.2rem; font-weight: 800; }
-  .tabs span { color: #c9d1d8; max-width: var(--measure); display: block; }
-  .dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; margin-right: 0.5rem; vertical-align: 0.08em; }
-
-  /* FAQ */
-  details { border-top: 1px solid var(--rule); padding: 1.1rem 0; max-width: 46rem; }
-  details:last-of-type { border-bottom: 1px solid var(--rule); }
-  summary { font-weight: 800; font-size: 1.15rem; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 1rem; }
-  summary::-webkit-details-marker { display: none; }
-  summary::after { content: "+"; font-weight: 900; color: var(--sign); }
-  details[open] summary::after { content: "–"; }
-  details p, details ul { max-width: var(--measure); margin: 0.8rem 0 0; }
-  code { font-size: 0.92em; background: #e9edf0; padding: 0.1em 0.35em; border-radius: 0.25rem; }
-
-  footer { border-top: 1px solid var(--rule); padding: 2.5rem 0 3rem; color: var(--muted); font-size: 0.95rem; }
-  footer p { max-width: 46rem; margin: 0 0 0.6rem; }
-
-  .unsupported { background: #fff4d6; border-left: 5px solid var(--amber); padding: 0.9rem 1.1rem; border-radius: 0.3rem; max-width: 40rem; margin-bottom: 2.5rem; }
+  footer { border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.92rem; }
+  footer .inner { max-width: 74rem; margin: 0 auto; padding: 1.75rem 1.25rem 2.5rem; }
+  footer p { margin: 0 0 0.4rem; max-width: 50rem; }
   [hidden] { display: none !important; }
 
-  @media (max-width: 760px) {
-    .hero .wrap { grid-template-columns: 1fr; gap: 2.5rem; padding-top: 2rem; padding-bottom: 3rem; }
-    .brand { margin-bottom: 1.8rem; }
-    .signal { justify-self: start; }
-    .lamp { width: 3.4rem; height: 3.4rem; }
-    .see-grid { grid-template-columns: 1fr; }
-    .see img { max-width: 18rem; }
-    .step { grid-template-columns: 2.8rem minmax(0, 1fr); gap: 1rem; }
-    .marker { width: 2.8rem; height: 2.8rem; font-size: 1.1rem; }
-    .steps::before { left: 1.15rem; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .lamp, .countdown, .marker { transition: none; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding-top: 1.5rem; }
+    .toc { display: none; }
+    .topbar nav { gap: 0.9rem; }
+    h1 { font-size: 1.9rem; }
+    .figure { grid-template-columns: 1fr; }
+    .figure img { max-width: 14rem; }
+    th { width: 40%; }
   }
 </style>
 </head>
 <body>
 
-<header class="hero">
-  <div class="wrap">
-    <div>
-      <div class="brand"><img src="img/icon.png" alt="">CITS-to-go</div>
-      <h1>Hör mit, was Ampeln den Autos funken.</h1>
-      <p>Ampeln und neuere Autos senden auf 5,9&nbsp;GHz ständig C&#8209;ITS-Nachrichten: Signalphasen, Kreuzungspläne, Warnungen. Mit einem kleinen ESP32&#8209;C5 und deinem iPhone siehst du sie live.</p>
-      <a class="cta" href="#start">In drei Schritten loslegen</a>
-    </div>
-    <div class="signal" aria-hidden="true">
-      <div class="head">
-        <div class="lamp r" id="lamp-r"></div>
-        <div class="lamp a" id="lamp-a"></div>
-        <div class="lamp g on" id="lamp-g"></div>
-      </div>
-      <div class="countdown" id="countdown">12s<small>bis Gelb</small></div>
-    </div>
+<header class="topbar">
+  <div class="inner">
+    <a class="logo" href="#"><img src="img/icon.png" alt="">CITS-to-go</a>
+    <nav>
+      <a href="#einrichtung">Einrichtung</a>
+      <a href="#technik">Technik</a>
+      <a href="https://codeberg.org/sascha8a/cits-to-go">Quellcode</a>
+    </nav>
   </div>
 </header>
 
-<main>
-  <section id="start">
-    <div class="wrap">
-      <h2>In drei Schritten loslegen</h2>
-      <p class="lede">Du brauchst einmal einen Computer mit Chrome oder Edge und ein USB&#8209;C-Datenkabel. Danach reicht das iPhone.</p>
+<div class="layout">
+  <aside class="toc" aria-label="Inhalt">
+    <p>Inhalt</p>
+    <ol>
+      <li><a href="#ueberblick">Überblick</a></li>
+      <li><a href="#einrichtung">Einrichtung</a></li>
+      <li><a href="#nutzung">Nutzung</a></li>
+      <li><a href="#weiterleitung">Datenweiterleitung</a></li>
+      <li><a href="#probleme">Fehlerbehebung</a></li>
+      <li><a href="#technik">Technische Details</a></li>
+      <li><a href="#lizenz">Quellen und Lizenz</a></li>
+    </ol>
+  </aside>
 
-      <div class="unsupported" id="no-serial" hidden>
-        Dieser Browser kann nicht mit USB-Geräten sprechen. Öffne die Seite am Computer in <strong>Chrome</strong> oder <strong>Edge</strong>, um den ESP zu flashen und dein iPhone zu koppeln. Die App-Installation geht auch hier.
-      </div>
+  <article>
+    <section id="ueberblick">
+      <h1>CITS-to-go</h1>
+      <p class="intro">Ein mobiler Empfänger für C&#8209;ITS-Nachrichten im 5,9-GHz-Band (ITS-G5). Ein ESP32&#8209;C5 empfängt die Funkpakete von Ampeln und Fahrzeugen und überträgt sie per Bluetooth an ein iPhone, das sie dekodiert, anzeigt und auf Wunsch weiterleitet.</p>
+      <p>Diese Seite enthält die Firmware mit Webflasher, die Einrichtung des iPhones und die technischen Details.</p>
+      <table>
+        <tbody>
+          <tr><th scope="row">Hardware</th><td>Seeed Studio XIAO ESP32&#8209;C5</td></tr>
+          <tr><th scope="row">Empfang</th><td>ITS-G5, Kontrollkanal 5900&nbsp;MHz (Kanal 180)</td></tr>
+          <tr><th scope="row">Nachrichten</th><td>CAM, DENM, SPATEM, MAPEM, IVIM, CPM, SREM/SSEM; signiert und unsigniert</td></tr>
+          <tr><th scope="row">Verbindung zum Telefon</th><td>Bluetooth LE, verschlüsselt und gekoppelt</td></tr>
+          <tr><th scope="row">Apps</th><td>iOS 17 oder neuer (TestFlight), Android (Original-App)</td></tr>
+          <tr><th scope="row">Firmware</th><td>CITS-to-go v2.42.3</td></tr>
+          <tr><th scope="row">Status</th><td>Experimentell, nicht für sicherheitsrelevante Zwecke</td></tr>
+        </tbody>
+      </table>
+    </section>
 
-      <ol class="steps">
-        <li class="step" id="step-flash">
-          <div class="marker"><span>1</span></div>
-          <div>
-            <h3>Firmware auf den ESP32&#8209;C5 spielen</h3>
-            <p>Steck den ESP per USB an den Computer und klick auf den Knopf. Wähle im Fenster den Eintrag mit „USB JTAG/serial debug unit“ und bestätige die Installation. Das dauert etwa eine Minute.</p>
-            <esp-web-install-button manifest="firmware/manifest.json" id="flasher">
-              <button slot="activate" class="btn">ESP32&#8209;C5 flashen</button>
-              <span slot="unsupported"><button class="btn" disabled>Flashen braucht Chrome oder Edge am Computer</button></span>
-              <span slot="not-allowed"><button class="btn" disabled>Flashen geht nur über https</button></span>
+    <section id="einrichtung">
+      <h2>Einrichtung</h2>
+      <p>Die Einrichtung erfolgt einmalig an einem Computer mit Chrome oder Edge und einem USB&#8209;C-Datenkabel. Danach arbeitet der Empfänger nur noch mit dem Telefon und einer Stromquelle.</p>
+      <div class="note" id="no-serial" hidden>Dieser Browser unterstützt keinen Zugriff auf USB-Geräte (Web Serial). Für Schritt 1 und 3 die Seite am Computer in Chrome oder Edge öffnen.</div>
+
+      <div class="step" id="step-flash" data-n="1">
+        <h3>Firmware flashen</h3>
+        <p>Den ESP32&#8209;C5 per USB anschließen, den Knopf verwenden und im Auswahlfenster das Gerät „USB JTAG/serial debug unit“ wählen. Der Vorgang dauert etwa eine Minute.</p>
+        <div class="tool">
+          <div class="row">
+            <esp-web-install-button manifest="firmware/manifest.json">
+              <button slot="activate" class="btn">Firmware installieren</button>
+              <span slot="unsupported"><button class="btn" disabled>Erfordert Chrome oder Edge</button></span>
+              <span slot="not-allowed"><button class="btn" disabled>Erfordert HTTPS</button></span>
             </esp-web-install-button>
-            <p class="needs" style="margin-top:1rem">Firmware CITS-to-go v2.42.3 für den Seeed Studio XIAO ESP32&#8209;C5. Wird kein Gerät angezeigt: BOOT-Taste gedrückt halten, einstecken, loslassen, erneut versuchen.</p>
-            <label class="needs"><input type="checkbox" id="flash-done"> Flashen ist erledigt</label>
+            <span class="meta">Version 2.42.3, 1,1&nbsp;MB (<a href="firmware/CITS-to-go-firmware-v2.42.3.bin">Datei herunterladen</a>)</span>
           </div>
-        </li>
-
-        <li class="step" id="step-app">
-          <div class="marker"><span>2</span></div>
-          <div>
-            <h3>App aufs iPhone holen</h3>
-            <p>Die iOS-App ist in der Testphase und wird über Apples TestFlight verteilt. Öffne die Einladung auf dem iPhone, installiere TestFlight und darüber CITS-to-go.</p>
-            <div class="store">
-              <a class="primary" href="https://testflight.apple.com/" id="testflight-link">TestFlight öffnen</a>
-              <a href="https://codeberg.org/sascha8a/cits-to-go/releases">Android-App (APK)</a>
-            </div>
-            <p class="needs">Noch keine Einladung? Schreib an <a href="mailto:mail@dirkreich.com?subject=CITS-to-go%20TestFlight">mail@dirkreich.com</a>. Öffne die App danach einmal und erlaube Bluetooth.</p>
-            <label class="needs"><input type="checkbox" id="app-done"> App ist installiert</label>
-          </div>
-        </li>
-
-        <li class="step" id="step-pair">
-          <div class="marker"><span>3</span></div>
-          <div>
-            <h3>iPhone mit dem ESP koppeln</h3>
-            <p>Damit sich nicht jedes Handy in der Nähe mit deinem Empfänger verbinden kann, nimmt der ESP ein neues iPhone nur an, wenn er am Computer hängt und du hier zustimmst. Das machst du einmal.</p>
-            <div class="panel">
-              <ol>
-                <li>Lass den ESP am Computer eingesteckt und öffne die App auf dem iPhone.</li>
-                <li>Klick auf <strong>Kopplung erlauben</strong> und wähle wieder den ESP aus.</li>
-                <li>Tippe in der App innerhalb von 30 Sekunden auf <strong>Verbinden</strong> und bestätige „Koppeln“.</li>
-              </ol>
-            </div>
-            <p style="margin-top:1.2rem"><button class="btn" id="pair-btn">Kopplung erlauben</button></p>
-            <p class="status" id="pair-status" role="status" aria-live="polite"></p>
-            <p class="needs">Klappt es nicht? Dann ist evtl. noch ein anderes Programm mit dem ESP verbunden, z. B. dieses Flash-Fenster: Seite neu laden und nochmal versuchen. Wenn du den ESP neu geflasht hast, entferne ihn vorher in den iOS-Einstellungen unter Bluetooth („Dieses Gerät ignorieren“).</p>
-          </div>
-        </li>
-      </ol>
-    </div>
-  </section>
-
-  <section class="see">
-    <div class="wrap see-grid">
-      <img src="img/screenshot-kreuzung.png" alt="Kreuzungsansicht der App: Spuren in Rot und Grün mit Sekunden-Countdown und Tabelle der Signalgruppen" width="400" height="870" loading="lazy">
-      <div>
-        <h2>Was die App dir zeigt</h2>
-        <p class="lede">Der ESP bleibt im Auto, am Rucksack oder auf dem Fensterbrett. Solange er Strom hat, verbindet sich dein iPhone von selbst.</p>
-        <ul class="tabs">
-          <li><strong><i class="dot" style="background:var(--green)"></i>Kreuzungen</strong><span>Die Spuren einer Ampelkreuzung, eingefärbt nach aktueller Phase, mit Countdown bis zum nächsten Wechsel und deiner Position.</span></li>
-          <li><strong><i class="dot" style="background:var(--amber)"></i>Live</strong><span>Jede empfangene Nachricht: CAM von Autos, DENM-Warnungen, SPATEM und MAPEM von Ampeln, mit Signalstärke und Rohdaten.</span></li>
-          <li><strong><i class="dot" style="background:var(--red)"></i>Karte und Aufnahmen</strong><span>Wo die Sender stehen, dazu Mitschnitte als PCAP-Datei zum Öffnen in Wireshark.</span></li>
-          <li><strong><i class="dot" style="background:#9fb3c4"></i>Weiterleiten</strong><span>Auf Wunsch an OpenTrafficMap, damit deine Empfänge auf der gemeinsamen Karte landen.</span></li>
-        </ul>
+          <p class="meta" style="margin:0.8rem 0 0">SHA&#8209;256 <span class="mono">9e51dab3…07757a736</span>. Erscheint kein Gerät: BOOT-Taste beim Einstecken gedrückt halten.</p>
+        </div>
+        <label class="check"><input type="checkbox" id="flash-done"> Erledigt</label>
       </div>
-    </div>
-  </section>
 
-  <section>
-    <div class="wrap">
-      <h2>Fragen</h2>
-      <p class="lede">Was Leute vor dem ersten Test meistens wissen wollen.</p>
+      <div class="step" id="step-app" data-n="2">
+        <h3>App installieren</h3>
+        <p>Die iOS-App befindet sich im Test und wird über Apple TestFlight verteilt. Nach Annahme der Einladung wird sie in der TestFlight-App installiert. Beim ersten Start den Bluetooth-Zugriff erlauben.</p>
+        <div class="tool">
+          <div class="row">
+            <a class="btn" href="mailto:mail@dirkreich.com?subject=CITS-to-go%20TestFlight-Zugang">TestFlight-Zugang anfragen</a>
+            <a class="btn secondary" href="https://codeberg.org/sascha8a/cits-to-go/releases">Android-APK</a>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="app-done"> Erledigt</label>
+      </div>
 
-      <details>
-        <summary>Welche Hardware brauche ich?</summary>
-        <ul>
-          <li>Einen <strong>Seeed Studio XIAO ESP32&#8209;C5</strong>. Andere ESP32&#8209;C5-Boards sind ungetestet.</li>
-          <li>Ein USB&#8209;C-Kabel, das Daten überträgt. Reine Ladekabel funktionieren nicht.</li>
-          <li>Ein iPhone mit iOS 17 oder neuer, alternativ ein Android-Handy mit der Original-App.</li>
-          <li>Zum Einrichten einmal einen Computer mit Chrome oder Edge.</li>
-        </ul>
-      </details>
+      <div class="step" id="step-pair" data-n="3">
+        <h3>iPhone koppeln</h3>
+        <p>Die Firmware akzeptiert per Bluetooth nur ein gespeichertes Telefon. Ein neues Telefon wird nur angenommen, nachdem die Kopplung über USB freigegeben wurde. Das verhindert, dass fremde Geräte in Funkreichweite den Empfänger nutzen.</p>
+        <ol>
+          <li>Den ESP am Computer angeschlossen lassen und die App öffnen.</li>
+          <li>„Kopplung freigeben“ wählen und den ESP auswählen.</li>
+          <li>Innerhalb von 30 Sekunden in der App auf <em>Verbinden</em> tippen und die iOS-Abfrage <em>Koppeln</em> bestätigen.</li>
+        </ol>
+        <div class="tool">
+          <div class="row">
+            <button class="btn" id="pair-btn">Kopplung freigeben</button>
+            <span class="meta">Ersetzt ein zuvor gekoppeltes Telefon.</span>
+          </div>
+          <p class="status" id="pair-status" role="status" aria-live="polite"></p>
+        </div>
+        <p class="meta">Danach verbindet sich die App selbstständig, auch im Hintergrund. Nach einem erneuten Flashen das Gerät zuvor in den iOS-Einstellungen unter Bluetooth ignorieren.</p>
+      </div>
+    </section>
 
-      <details>
-        <summary>Wo empfange ich etwas?</summary>
-        <p>Autos mit Car2X, vor allem neuere VW, senden überall CAM-Nachrichten, die siehst du fast sofort auf jeder größeren Straße. Ampeldaten gibt es nur an ausgestatteten Kreuzungen, zum Beispiel in Hamburg, Wien und weiteren Testfeldern. Auf der Karte von <a href="https://opentrafficmap.org">OpenTrafficMap</a> siehst du, wo andere schon empfangen haben.</p>
-      </details>
+    <section id="nutzung">
+      <h2>Nutzung</h2>
+      <div class="figure">
+        <img src="img/screenshot-kreuzung.png" alt="Kreuzungsansicht der iOS-App mit nach Signalphase eingefärbten Spuren und Restzeiten" width="400" height="870" loading="lazy">
+        <div>
+          <p>Der Empfänger benötigt nur eine Stromversorgung über USB, etwa eine Powerbank oder ein Kfz-Ladegerät. Die App besteht aus fünf Bereichen:</p>
+          <table>
+            <tbody>
+              <tr><th scope="row">Live</th><td>Empfangene Nachrichten mit Typ, Station, Signalstärke und Rohdaten</td></tr>
+              <tr><th scope="row">Kreuzungen</th><td>MAPEM-Geometrie mit SPATEM-Phasen: <span class="phase" style="background:var(--green)"></span>frei, <span class="phase" style="background:var(--amber)"></span>Übergang, <span class="phase" style="background:var(--red)"></span>Halt, mit Restzeit</td></tr>
+              <tr><th scope="row">Karte</th><td>Sender an ihrer GeoNetworking-Position</td></tr>
+              <tr><th scope="row">Aufnahmen</th><td>PCAP-Mitschnitte (IEEE 802.11) für Wireshark</td></tr>
+              <tr><th scope="row">Einstellungen</th><td>Weiterleitung, Diagnoseprotokoll, Demo-Kreuzung</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p>Fahrzeuge mit Car2X senden CAM-Nachrichten und sind nahezu überall zu empfangen. SPATEM und MAPEM gibt es nur an ausgestatteten Lichtsignalanlagen, DENM nur bei konkreten Ereignissen.</p>
+    </section>
 
-      <details>
-        <summary>Warum muss das iPhone gekoppelt werden?</summary>
-        <p>Der ESP kann auch senden. Damit niemand Fremdes ihn über Bluetooth steuert, merkt er sich genau ein Handy als Besitzer. Ein neues Handy darf nur ran, wenn jemand den ESP gerade per USB in der Hand hat. Genau das bestätigst du in Schritt 3. Ein neu gekoppeltes iPhone ersetzt das vorherige.</p>
-      </details>
+    <section id="weiterleitung">
+      <h2>Datenweiterleitung</h2>
+      <p>Die App kann empfangene Pakete per MQTT weiterleiten. Die Weiterleitung ist standardmäßig ausgeschaltet. Übertragen werden die empfangenen Funkpakete, nicht die Position des Telefons. Das Format entspricht dem Empfänger von <a href="https://opentrafficmap.org">OpenTrafficMap</a>:</p>
+      <table>
+        <thead><tr><th>Topic</th><th>Inhalt</th></tr></thead>
+        <tbody>
+          <tr><td><code>its/&lt;node&gt;/packet</code></td><td>Rohes IEEE-802.11-Frame, binär, QoS 0</td></tr>
+          <tr><td><code>its/&lt;node&gt;/status</code></td><td><code>online</code> (retained), Last Will <code>offline</code></td></tr>
+          <tr><td><code>its/&lt;node&gt;/info</code></td><td>JSON mit Node-Kennung, App-Version und Hardware</td></tr>
+          <tr><td><code>its/&lt;node&gt;/stats</code></td><td>JSON mit Laufzeit in Sekunden, einmal pro Minute</td></tr>
+        </tbody>
+      </table>
+      <p>Ohne Verbindung puffert die App bis zu 5000 Pakete und sendet sie nach dem Wiederverbinden.</p>
+    </section>
 
-      <details>
-        <summary>Werden meine Daten irgendwohin geschickt?</summary>
-        <p>Nein, solange du es nicht einschaltest. In den Einstellungen der App kannst du die Weiterleitung an OpenTrafficMap aktivieren. Dann gehen die empfangenen Funkpakete dorthin, nicht aber deine eigene Position.</p>
-      </details>
+    <section id="probleme">
+      <h2>Fehlerbehebung</h2>
+      <table>
+        <thead><tr><th>Symptom</th><th>Abhilfe</th></tr></thead>
+        <tbody>
+          <tr><td>Kein Gerät beim Flashen</td><td>Datenkabel verwenden, BOOT-Taste beim Einstecken halten, andere Programme mit Zugriff auf den Port schließen</td></tr>
+          <tr><td>„Gerät belegt“ beim Koppeln</td><td>Flash-Dialog schließen oder Seite neu laden</td></tr>
+          <tr><td>„Keine Antwort“ beim Koppeln</td><td>Es läuft noch keine CITS-to-go-Firmware: Schritt 1 wiederholen</td></tr>
+          <tr><td>App meldet „Nicht angelernt“</td><td>Kopplung in Schritt 3 erneut freigeben</td></tr>
+          <tr><td>Kopplung schlägt nach Neu-Flashen fehl</td><td>Gerät in iOS unter Einstellungen › Bluetooth ignorieren, dann Schritt 3</td></tr>
+          <tr><td>Nur CAM, keine Ampeldaten</td><td>Normal abseits ausgestatteter Kreuzungen</td></tr>
+        </tbody>
+      </table>
+      <p>Die App schreibt ein Diagnoseprotokoll nach <code>diagnostics.log</code>, erreichbar in der Dateien-App unter „Auf meinem iPhone › CITS-to-go“.</p>
+    </section>
 
-      <details>
-        <summary>Der ESP taucht beim Flashen nicht auf</summary>
-        <ul>
-          <li>Anderes Kabel probieren, viele USB&#8209;C-Kabel laden nur.</li>
-          <li>BOOT-Taste gedrückt halten, einstecken, loslassen und erneut auf „ESP32&#8209;C5 flashen“ klicken.</li>
-          <li>Programme schließen, die den Port belegen könnten, etwa die Arduino-IDE oder ein serielles Terminal.</li>
-        </ul>
-      </details>
+    <section id="technik">
+      <h2>Technische Details</h2>
+      <h3>Bluetooth</h3>
+      <table>
+        <tbody>
+          <tr><th scope="row">Service</th><td class="mono">6e400001-b5a3-f393-e0a9-e50e24dcca9e</td></tr>
+          <tr><th scope="row">RX (Schreiben)</th><td><span class="mono">6e400002-…</span>, Verschlüsselung erforderlich</td></tr>
+          <tr><th scope="row">TX (Notify)</th><td><span class="mono">6e400003-…</span></td></tr>
+          <tr><th scope="row">Sicherheit</th><td>LE Secure Connections, Just Works, Bonding; ein Besitzer</td></tr>
+        </tbody>
+      </table>
+      <h3>Datenformat</h3>
+      <p>USB und Bluetooth übertragen denselben Bytestrom aus CTG1-Datensätzen: COBS-kodiert, durch <code>0x00</code> getrennt, mit CRC-32 gesichert. Ein Capture-Datensatz enthält Sequenznummer, Zeitstempel, Frequenz, RSSI und das vollständige 802.11-Frame.</p>
+      <h3>Kopplung freigeben</h3>
+      <p>Die Freigabe ist ein CTG1-Datensatz vom Typ 4 über USB. Die Firmware bestätigt mit Typ 5 und akzeptiert danach 30 Sekunden lang genau ein neues Telefon. Der Knopf in Schritt 3 sendet über Web Serial:</p>
+      <pre>08 43 54 47 31 01 04 0c 02 01 01 01 05 12 46 f8 46 00</pre>
+      <p>Alternativ per Kommandozeile:</p>
+      <pre>esptool --chip esp32c5 write-flash 0x0 CITS-to-go-firmware-v2.42.3.bin
+python3 arm_enrollment.py</pre>
+    </section>
 
-      <details>
-        <summary>Lieber im Terminal?</summary>
-        <p>Firmware: <a href="firmware/CITS-to-go-firmware-v2.42.3.bin">CITS-to-go-firmware-v2.42.3.bin</a>, dann <code>esptool --chip esp32c5 write-flash 0x0 CITS-to-go-firmware-v2.42.3.bin</code>. Koppeln: <a href="https://codeberg.org/sascha8a/cits-to-go">arm_enrollment.py</a> aus dem iOS-Projekt mit <code>python3 arm_enrollment.py</code> ausführen.</p>
-      </details>
-    </div>
-  </section>
-</main>
+    <section id="lizenz">
+      <h2>Quellen und Lizenz</h2>
+      <p>Firmware und Android-App stammen aus <a href="https://codeberg.org/sascha8a/cits-to-go">cits-to-go</a> von sascha8a und stehen unter der GPL&#8209;3.0. Das Projekt baut auf der Arbeit von <a href="https://codeberg.org/opentrafficmap">OpenTrafficMap</a> auf. Die iOS-App ist eine Portierung für iPhone mit eigenem Bluetooth-Client, MAPEM/SPATEM-Decoder und Kreuzungsansicht.</p>
+      <p>Kein offizielles Angebot von OpenTrafficMap.</p>
+    </section>
+  </article>
+</div>
 
 <footer>
-  <div class="wrap">
-    <p>Firmware und Android-App: <a href="https://codeberg.org/sascha8a/cits-to-go">cits-to-go</a> von sascha8a, Quellcode unter GPL-3.0. Aufbauend auf der Arbeit von <a href="https://opentrafficmap.org">OpenTrafficMap</a>.</p>
-    <p>iOS-App und diese Seite: Dirk Reich. Kein offizielles Projekt von OpenTrafficMap. Experimentelle Software, nicht für sicherheitsrelevante Zwecke im Straßenverkehr verwenden.</p>
+  <div class="inner">
+    <p>iOS-App und diese Seite: Dirk Reich, <a href="mailto:mail@dirkreich.com">mail@dirkreich.com</a></p>
   </div>
 </footer>
 
 <script type="module">
   import { armEnrollment } from "./enroll.js";
 
-  // Hero signal: green → amber → red → red+amber, with a countdown like the app shows.
-  const phases = [
-    { on: ["g"], secs: 12, color: "var(--green)", next: "bis Gelb" },
-    { on: ["a"], secs: 3, color: "var(--amber)", next: "bis Rot" },
-    { on: ["r"], secs: 14, color: "var(--red)", next: "bis Grün" },
-    { on: ["r", "a"], secs: 2, color: "var(--red)", next: "bis Grün" },
-  ];
-  const lamps = { r: document.getElementById("lamp-r"), a: document.getElementById("lamp-a"), g: document.getElementById("lamp-g") };
-  const cd = document.getElementById("countdown");
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let idx = 0, left = phases[0].secs;
-  function render() {
-    const p = phases[idx];
-    for (const k in lamps) lamps[k].classList.toggle("on", p.on.includes(k));
-    cd.style.background = p.color;
-    cd.innerHTML = `${left}s<small>${p.next}</small>`;
-  }
-  render();
-  if (!still) setInterval(() => {
-    left--;
-    if (left <= 0) { idx = (idx + 1) % phases.length; left = phases[idx].secs; }
-    render();
-  }, 1000);
-
-  // Step markers turn green as the user completes them.
   const hasSerial = "serial" in navigator;
   document.getElementById("no-serial").hidden = hasSerial;
-  function mark(id, done) { document.getElementById(id).classList.toggle("done", done); }
+
+  // Completed steps turn green (remembered per browser).
+  const mark = (id, done) => document.getElementById(id).classList.toggle("done", done);
   for (const [box, step] of [["flash-done", "step-flash"], ["app-done", "step-app"]]) {
     const el = document.getElementById(box);
     try { el.checked = localStorage.getItem(box) === "1"; } catch {}
@@ -356,39 +311,52 @@
     });
   }
 
+  // Highlight the current section in the table of contents.
+  const links = [...document.querySelectorAll(".toc a")];
+  const byId = new Map(links.map((a) => [a.getAttribute("href").slice(1), a]));
+  const observer = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) {
+      links.forEach((a) => a.classList.remove("active"));
+      byId.get(e.target.id)?.classList.add("active");
+    }
+  }, { rootMargin: "-20% 0px -70% 0px" });
+  document.querySelectorAll("article section[id]").forEach((s) => observer.observe(s));
+
   // Pairing via Web Serial.
   const btn = document.getElementById("pair-btn");
   const status = document.getElementById("pair-status");
-  if (!hasSerial) { btn.disabled = true; btn.textContent = "Koppeln braucht Chrome oder Edge am Computer"; }
+  if (!hasSerial) { btn.disabled = true; btn.textContent = "Erfordert Chrome oder Edge"; }
   const messages = {
-    cancelled: "Kein Gerät ausgewählt. Klick nochmal und wähle den ESP aus.",
-    busy: "Der ESP ist gerade von einem anderen Programm belegt. Schließ das Flash-Fenster oder lade die Seite neu und versuch es nochmal.",
-    noreply: "Der ESP hat nicht geantwortet. Läuft schon die CITS-to-go-Firmware? Dann Schritt 1 wiederholen.",
-    refused: "Der ESP hat die Kopplung abgelehnt. Steck ihn kurz ab und wieder an und versuch es erneut.",
-    unsupported: "Dieser Browser kann nicht mit USB-Geräten sprechen. Nimm Chrome oder Edge am Computer.",
+    cancelled: "Kein Gerät ausgewählt.",
+    busy: "Das Gerät ist von einem anderen Programm belegt. Flash-Dialog schließen oder Seite neu laden.",
+    noreply: "Keine Antwort vom Gerät. Läuft die CITS-to-go-Firmware? Gegebenenfalls Schritt 1 wiederholen.",
+    refused: "Das Gerät hat die Freigabe abgelehnt. Kurz trennen, wieder anschließen und erneut versuchen.",
+    unsupported: "Dieser Browser unterstützt kein Web Serial.",
   };
   let timer;
   btn.addEventListener("click", async () => {
     clearInterval(timer);
     btn.disabled = true;
     status.className = "status wait";
-    status.textContent = "Verbinde mit dem ESP …";
+    status.textContent = "Verbinde …";
     try {
       await armEnrollment();
+      mark("step-pair", true);
       let secs = 30;
       const tick = () => {
-        status.className = "status ok";
-        status.innerHTML = `Kopplung erlaubt. Tippe jetzt in der App auf „Verbinden“ – noch <span class="timer">${secs}</span> Sekunden.`;
-        if (secs-- <= 0) {
+        if (secs < 0) {
           clearInterval(timer);
           status.className = "status";
-          status.textContent = "Zeit abgelaufen. Steht in der App „Verbunden“, ist alles fertig. Sonst einfach nochmal auf „Kopplung erlauben“ klicken.";
+          status.textContent = "Freigabe abgelaufen. Zeigt die App „Verbunden“, ist die Kopplung abgeschlossen.";
           btn.disabled = false;
+          return;
         }
+        status.className = "status ok";
+        status.innerHTML = `Kopplung freigegeben. Jetzt in der App auf „Verbinden“ tippen – <span class="timer">${secs}</span>&nbsp;s.`;
+        secs--;
       };
       tick();
       timer = setInterval(tick, 1000);
-      mark("step-pair", true);
     } catch (e) {
       status.className = "status err";
       status.textContent = messages[e.kind] || `Fehler: ${e.message}`;
