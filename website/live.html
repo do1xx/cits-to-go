@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CITS-to-go – Live-Empfang</title>
+<meta name="description" content="Live-Ansicht aller CITS-to-go-Empfänger: Empfänger, eingehende C-ITS-Nachrichten und Sender auf der Karte.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #1f2428; --muted: #5d6770; --rule: #dfe3e6; --bg: #ffffff; --tint: #f4f6f7;
+    --accent: #0b4f8a; --red: #c4231c; --amber: #b77f00; --green: #1c8a43;
+    --mono: "Overpass Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1rem; line-height: 1.5; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); text-underline-offset: 0.18em; }
+  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; }
+  .topbar { border-bottom: 1px solid var(--rule); }
+  .topbar .inner { max-width: 84rem; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; align-items: center; gap: 1.5rem; }
+  .logo { display: flex; align-items: center; gap: 0.55rem; font-weight: 800; color: var(--ink); text-decoration: none; }
+  .logo img { width: 1.7rem; height: 1.7rem; border-radius: 0.4rem; }
+  .topbar nav { margin-left: auto; display: flex; gap: 1.25rem; font-size: 0.95rem; }
+  .topbar nav a { color: var(--muted); text-decoration: none; }
+  .topbar nav a[aria-current] { color: var(--ink); font-weight: 700; }
+
+  main { max-width: 84rem; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.5rem; margin-bottom: 1.25rem; }
+  h1 { font-size: 1.9rem; font-weight: 800; margin: 0; }
+  h2 { font-size: 1.15rem; font-weight: 800; margin: 0 0 0.6rem; }
+  .conn { color: var(--muted); font-size: 0.95rem; display: inline-flex; align-items: center; gap: 0.45rem; }
+  .led { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: #9aa5ae; }
+  .led.on { background: var(--green); }
+  .led.err { background: var(--red); }
+
+  .counts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin: 0 0 1.25rem; font-size: 0.95rem; color: var(--muted); }
+  .counts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1.5rem; }
+  #map { height: 30rem; border: 1px solid var(--rule); border-radius: 0.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem 0.4rem 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 700; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); font-size: 0.88em; }
+  .muted { color: var(--muted); }
+  .online { color: var(--green); font-weight: 700; }
+  .offline { color: var(--muted); }
+  .feed { margin-top: 2rem; }
+  .feed .scroll { max-height: 26rem; overflow: auto; border-top: 1px solid var(--rule); }
+  .feed thead th { position: sticky; top: 0; background: var(--bg); }
+  .type { display: inline-block; min-width: 4.2rem; font-weight: 700; }
+  .empty { color: var(--muted); padding: 1rem 0; }
+  .note { color: var(--muted); font-size: 0.9rem; margin-top: 1.5rem; max-width: 50rem; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } #map { height: 22rem; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="inner">
+    <a class="logo" href="./"><img src="img/icon.png" alt="">CITS-to-go</a>
+    <nav>
+      <a href="./">Dokumentation</a>
+      <a href="live.html" aria-current="page">Live</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="head">
+    <h1>Live-Empfang</h1>
+    <span class="conn"><span class="led" id="led"></span><span id="conn">Verbinde mit mqtt.dirksreich.de …</span></span>
+  </div>
+  <div class="counts" id="counts"><span>Noch keine Nachrichten seit dem Öffnen der Seite.</span></div>
+
+  <div class="grid">
+    <div id="map" role="region" aria-label="Karte der Sender"></div>
+    <div>
+      <h2>Empfänger</h2>
+      <table>
+        <thead><tr><th>Node</th><th>Status</th><th class="num">Pakete</th><th class="num">zuletzt</th></tr></thead>
+        <tbody id="nodes"><tr><td colspan="4" class="empty">Noch kein Empfänger gemeldet.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <section class="feed">
+    <h2>Eingehende Nachrichten</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Zeit</th><th>Typ</th><th>Station</th><th>Empfänger</th><th>Position</th><th class="num">Bytes</th></tr></thead>
+        <tbody id="feed"><tr><td colspan="6" class="empty">Sobald ein Empfänger etwas hört, erscheint es hier.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="note">Angezeigt werden die Daten aller Empfänger, deren App an den 1xx-Server sendet. Die Karte zeigt die Position der Sender (Fahrzeuge und Ampeln) aus ihren GeoNetworking-Paketen, nicht die Position der Empfänger. Nachrichten vor dem Öffnen der Seite werden nicht nachgeladen.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="live-config.js"></script>
+<script type="module">
+  import mqtt from "https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.esm.js";
+  import { extractIts } from "./its.js";
+
+  const COLORS = { CAM: "#0b4f8a", DENM: "#c4231c", SPATEM: "#1c8a43", MAPEM: "#157a6e", IVIM: "#b77f00", CPM: "#6b3fa0" };
+  const nodes = new Map();        // node -> {online, packets, last, info}
+  const stations = new Map();     // stationId -> {marker, type, last}
+  const counts = {};
+  let total = 0;
+
+  const map = L.map("map", { zoomControl: true }).setView([53.55, 10.0], 10);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+  let fitted = false;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const ago = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min`; };
+  const time = (t) => new Date(t).toLocaleTimeString("de-DE");
+
+  function setConn(text, state) { $("conn").textContent = text; $("led").className = "led " + (state || ""); }
+
+  function renderNodes() {
+    if (!nodes.size) return;
+    const rows = [...nodes.entries()].sort((a, b) => (b[1].last || 0) - (a[1].last || 0)).map(([id, n]) => {
+      const recent = n.last && Date.now() - n.last < 120000;
+      const status = n.online === false ? '<span class="offline">offline</span>' : (recent || n.online) ? '<span class="online">online</span>' : '<span class="offline">still</span>';
+      return `<tr><td class="mono">${esc(id)}</td><td>${status}</td><td class="num">${n.packets}</td><td class="num">${n.last ? ago(n.last) : "–"}</td></tr>`;
+    });
+    $("nodes").innerHTML = rows.join("");
+  }
+
+  function renderCounts() {
+    const parts = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([t, c]) => `<span>${esc(t)} <b>${c}</b></span>`);
+    $("counts").innerHTML = `<span>Seit dem Öffnen <b>${total}</b> Nachrichten</span>` + parts.join("");
+  }
+
+  function addFeed(node, its, len) {
+    const tbody = $("feed");
+    if (tbody.querySelector(".empty")) tbody.innerHTML = "";
+    const tr = document.createElement("tr");
+    const type = its.error ? "?" : its.type;
+    const pos = its.lat != null ? `${its.lat.toFixed(5)}, ${its.lon.toFixed(5)}` : "–";
+    tr.innerHTML = `<td class="mono">${time(Date.now())}</td>`
+      + `<td><span class="type" style="color:${COLORS[type] || "inherit"}">${esc(type)}</span>${its.secured ? ' <span class="muted" title="signiert">🔒</span>' : ""}</td>`
+      + `<td class="mono">${its.error ? '<span class="muted">' + esc(its.error) + "</span>" : its.stationId}</td>`
+      + `<td class="mono">${esc(node)}</td><td class="mono muted">${pos}</td><td class="num">${len}</td>`;
+    tbody.prepend(tr);
+    while (tbody.children.length > 200) tbody.lastChild.remove();
+  }
+
+  function addStation(its) {
+    if (its.error || its.lat == null) return;
+    let s = stations.get(its.stationId);
+    const color = COLORS[its.type] || "#5d6770";
+    if (!s) {
+      const marker = L.circleMarker([its.lat, its.lon], { radius: 7, color: "#fff", weight: 2, fillColor: color, fillOpacity: 0.95 }).addTo(map);
+      s = { marker, types: new Set() };
+      stations.set(its.stationId, s);
+    }
+    s.types.add(its.type);
+    s.marker.setLatLng([its.lat, its.lon]).setStyle({ fillColor: color });
+    s.marker.bindTooltip(`Station ${its.stationId}<br>${[...s.types].join(", ")}<br>${time(Date.now())}`);
+    if (!fitted) { map.setView([its.lat, its.lon], 14); fitted = true; }
+  }
+
+  const cfg = window.CITS_LIVE || {};
+  if (!cfg.url) {
+    setConn("Konfiguration fehlt", "err");
+  } else {
+    const client = mqtt.connect(cfg.url, {
+      username: cfg.username, password: cfg.password,
+      clientId: "cits-live-" + Math.random().toString(16).slice(2, 10),
+      reconnectPeriod: 3000, connectTimeout: 10000, clean: true,
+    });
+    client.on("connect", () => { setConn("Verbunden mit mqtt.dirksreich.de", "on"); client.subscribe(["its/+/packet", "its/+/status", "its/+/info"]); });
+    client.on("reconnect", () => setConn("Verbindung unterbrochen, verbinde neu …"));
+    client.on("error", (e) => setConn("Keine Verbindung: " + e.message, "err"));
+    client.on("message", (topic, payload) => {
+      const [, node, leaf] = topic.split("/");
+      if (!node) return;
+      const n = nodes.get(node) || { packets: 0, last: 0, online: undefined };
+      nodes.set(node, n);
+      if (leaf === "status") { const v = new TextDecoder().decode(payload); n.online = v === "online" ? true : v === "offline" ? false : undefined; }
+      else if (leaf === "info") { try { n.info = JSON.parse(new TextDecoder().decode(payload)); } catch {} }
+      else if (leaf === "packet") {
+        const frame = new Uint8Array(payload);
+        const its = extractIts(frame);
+        n.packets++; n.last = Date.now(); n.online = true;
+        total++; const t = its.error ? "unbekannt" : its.type; counts[t] = (counts[t] || 0) + 1;
+        addFeed(node, its, frame.length);
+        addStation(its);
+        renderCounts();
+      }
+      renderNodes();
+    });
+  }
+  setInterval(renderNodes, 5000);
+</script>
+</body>
+</html>
