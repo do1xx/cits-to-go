@@ -1,0 +1,11 @@
+# Receivers publish their packets, status, info and stats
+user cits-upload
+topic write its/#
+
+# Live view and analysis
+user cits-read
+topic read its/#
+
+# Archiver and maintenance
+user cits-admin
+topic readwrite #

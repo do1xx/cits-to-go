@@ -1,0 +1,31 @@
+# mqtt.dirksreich.de -> CITS-to-go MQTT-Broker (Container mqtt-cits, /opt/mqtt-cits).
+# Die Apps sprechen direkt MQTT/TLS auf :8883. Hier nur MQTT über WebSocket für die Live-Ansicht im Browser.
+server {
+    server_name mqtt.dirksreich.de;
+
+    location = /mqtt {
+        proxy_pass http://127.0.0.1:9002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+    location / {
+        return 302 https://cits.dirksreich.de/;
+    }
+
+    listen [::]:443 ssl;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/mqtt.dirksreich.de/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mqtt.dirksreich.de/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+server {
+    server_name mqtt.dirksreich.de;
+    listen 80;
+    listen [::]:80;
+    return 301 https://$host$request_uri;
+}

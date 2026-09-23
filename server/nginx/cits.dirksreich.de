@@ -1,0 +1,21 @@
+# cits.dirksreich.de -> CITS-to-go Doku und Webflasher (statisch aus /var/www/cits).
+# cits.1xx.is kommt dazu, sobald der DNS-Eintrag bei Cloudflare existiert.
+server {
+    server_name cits.dirksreich.de;
+    root /var/www/cits;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+    location /firmware/ {
+        add_header Cache-Control "no-cache";
+        types { application/octet-stream bin; application/json json; }
+    }
+    location ~* \.(png|js|css)$ {
+        expires 1h;
+    }
+
+    listen 80;
+    listen [::]:80;
+}

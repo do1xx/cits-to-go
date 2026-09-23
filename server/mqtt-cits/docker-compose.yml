@@ -1,0 +1,29 @@
+# CITS-to-go MQTT broker on mqtt.dirksreich.de
+#   8883/tcp  MQTT over TLS for the apps (public)
+#   9002/tcp  MQTT over WebSocket, localhost only; nginx serves it as wss://mqtt.dirksreich.de/mqtt
+#   1883/tcp  plain MQTT on the internal compose network only (archiver)
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-cits
+    restart: unless-stopped
+    ports:
+      - "8883:8883"
+      - "127.0.0.1:9002:9001"
+    volumes:
+      - ./config:/mosquitto/config:ro
+      - ./certs:/mosquitto/certs:ro
+      - ./data:/mosquitto/data
+      - ./log:/mosquitto/log
+
+  archiver:
+    build: ./archiver
+    container_name: mqtt-cits-archiver
+    restart: unless-stopped
+    depends_on: [mosquitto]
+    env_file: .env
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+    volumes:
+      - ./archive:/archive
