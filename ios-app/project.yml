@@ -1,0 +1,52 @@
+name: CitsToGo
+options:
+  bundleIdPrefix: org.opentrafficmap
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: K77H3ATFTR
+    CODE_SIGN_STYLE: Automatic
+targets:
+  CitsToGo:
+    type: application
+    platform: iOS
+    sources: [CitsToGo]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dirkreich.citstogo
+        INFOPLIST_KEY_CFBundleDisplayName: CITS-to-go
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Verbindung zum CITS-to-go ESP32-C5 Empfänger über Bluetooth LE."
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Zeigt deine Position in der Kreuzungsansicht und sortiert Kreuzungen nach Entfernung."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Weiterleitung der C-ITS Pakete an einen MQTT-Broker im lokalen Netz."
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: CitsToGo/Info.plist
+      properties:
+        UIBackgroundModes: [bluetooth-central]
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+  CitsToGoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - CitsToGoTests
+    dependencies:
+      - target: CitsToGo
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  CitsToGo:
+    build:
+      targets:
+        CitsToGo: all
+        CitsToGoTests: [test]
+    test:
+      targets: [CitsToGoTests]
