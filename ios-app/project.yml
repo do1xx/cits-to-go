@@ -26,6 +26,9 @@ targets:
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Zeigt deine Position in der Kreuzungsansicht und sortiert Kreuzungen nach Entfernung."
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Weiterleitung der C-ITS Pakete an einen MQTT-Broker im lokalen Netz."
         GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
     info:
       path: CitsToGo/Info.plist
       properties:
