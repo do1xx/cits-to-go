@@ -100,6 +100,7 @@ struct SignalEvent: Sendable {
     let likelyTime: Int?
     let maxEndTime: Int?
     let confidence: Int?
+    var advisorySpeedKmh: Int? = nil
 }
 
 struct SignalMovement: Sendable {

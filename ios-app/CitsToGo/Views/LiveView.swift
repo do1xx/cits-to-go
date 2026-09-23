@@ -38,6 +38,13 @@ struct LiveView: View {
                         }
                     }
                 }
+                if !model.warnings.isEmpty {
+                    Section("Aktive Warnungen") {
+                        ForEach(model.warnings.values.sorted { $0.lastSeen > $1.lastSeen }) { w in
+                            WarningRow(warning: w)
+                        }
+                    }
+                }
                 Section(filter.map { "Pakete · \($0)" } ?? "Letzte Pakete") {
                     if filtered.isEmpty {
                         ContentUnavailableView("Noch keine Pakete", systemImage: "antenna.radiowaves.left.and.right.slash",
@@ -142,7 +149,12 @@ struct PacketRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let its = record.its {
                     HStack(spacing: 4) {
-                        Text("Station \(its.stationId)").font(.subheadline.monospacedDigit())
+                        if let summary = record.summary {
+                            Text(summary).font(.subheadline).lineLimit(1)
+                                .foregroundStyle(record.cam?.isEmergency == true || record.denm != nil ? Color.red : Color.primary)
+                        } else {
+                            Text(verbatim: "Station \(its.stationId)").font(.subheadline.monospacedDigit())
+                        }
                         if its.secured { Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.secondary) }
                     }
                 } else {
@@ -191,5 +203,24 @@ private struct ForwardLine: View {
             }
         }
         .font(.caption).foregroundStyle(.secondary)
+    }
+}
+
+struct WarningRow: View {
+    let warning: WarningSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.red))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(warning.denm.causeLabel).font(.subheadline.weight(.semibold))
+                if let sub = warning.denm.subCauseLabel { Text(sub).font(.caption) }
+                Text(verbatim: "Von \(warning.denm.stationType.label) \(warning.denm.originatingStationId), erkannt \(warning.denm.detectionTime.formatted(date: .omitted, time: .shortened)), gültig bis \(warning.denm.expires.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
     }
 }

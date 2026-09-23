@@ -151,6 +151,40 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNil(spat.secondsUntilChange(event, now: t0.addingTimeInterval(51)))
     }
 
+    /// Reference values taken from Wireshark's dissection of the same capture.
+    func testCamAndDenmMatchWireshark() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "julian-cam-denm", withExtension: "pcap"))
+        let d = [UInt8](try Data(contentsOf: url))
+        var off = 24
+        var cams: [CamInfo] = [], denms: [DenmInfo] = []
+        while off + 16 <= d.count {
+            let n = Int(d.u32le(off + 8))
+            let frame = Array(d[(off + 16)..<(off + 16 + n)]); off += 16 + n
+            guard case .success(let its) = ItsFrameExtractor.extract(frame) else { return XCTFail("extract") }
+            if its.messageId == 2 { cams.append(try CamDenmDecoder.decodeCam(its)) }
+            if its.messageId == 1 { denms.append(try CamDenmDecoder.decodeDenm(its)) }
+        }
+        XCTAssertEqual(cams.count, 12)
+        XCTAssertEqual(denms.count, 4)
+        let first = cams[0]                      // frame 1
+        XCTAssertEqual(first.stationType, .passengerCar)
+        XCTAssertEqual(first.latitude!, 52.0899523, accuracy: 1e-7)
+        XCTAssertEqual(first.headingDegrees!, 258.5, accuracy: 0.01)
+        XCTAssertEqual(first.speedKmh!, 9.61 * 3.6, accuracy: 0.01)
+        XCTAssertEqual(first.vehicleLengthM!, 4.9, accuracy: 0.01)
+        XCTAssertEqual(first.vehicleRole, .default)
+        XCTAssertEqual(first.exteriorLights, ["Tagfahrlicht"])
+        let denm = denms[0]
+        XCTAssertEqual(denm.originatingStationId, 923_948_499)
+        XCTAssertEqual(denm.sequenceNumber, 697)
+        XCTAssertEqual(denm.causeCode, 1)
+        XCTAssertEqual(denm.subCauseCode, 0)
+        XCTAssertEqual(denm.validitySeconds, 60)
+        XCTAssertEqual(denm.causeLabel, "Verkehrsstörung")
+        // detectionTime 716993747244 ms after 2004-01-01 = 2026-09-20 12:55:42 (+5 s TAI offset displayed by tshark ignored)
+        XCTAssertEqual(denm.detectionTime.timeIntervalSince1970, 1_072_915_200 + 716_993_747.244, accuracy: 0.001)
+    }
+
     func testPcapWriterHeaderAndRecord() throws {
         let w = try PcapWriter()
         w.write(CitsPacket(sequence: 1, timestampUs: 5, frequencyMhz: 5900, rssiDbm: -60, wifiType: 0, rxState: 0,

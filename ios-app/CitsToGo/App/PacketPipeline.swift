@@ -8,8 +8,12 @@ struct PacketRecord: Identifiable, Sendable {
     let its: ItsPacketInfo?
     let note: String?          // extraction failure reason, if any
     let sourceMac: String?
+    var cam: CamInfo? = nil
+    var denm: DenmInfo? = nil
 
     var title: String { its?.displayName ?? (note == nil ? "802.11" : "GN ?") }
+    /// One-line human description of the decoded content, if any.
+    var summary: String? { denm?.summary ?? cam?.summary }
 }
 
 /// Everything the UI needs since the last drain.
@@ -132,6 +136,58 @@ final class PacketPipeline: BleTransportDelegate {
 
     func stopDemo() { transport.queue.async { self.demoFrame = nil } }
 
+    // MARK: Replay
+
+    private var replayGeneration = 0
+
+    /// Plays a classic libpcap file (802.11, Prism or radiotap link types) through the normal
+    /// decoding path with its original timing (gaps capped at 1 s). Never forwarded or recorded.
+    /// `progress` is called on the transport queue with (played, total); total == played means finished.
+    func startReplay(_ data: Data, progress: @escaping (Int, Int) -> Void) -> Bool {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 24 else { return false }
+        let magic = bytes.u32le(0)
+        let swapped: Bool
+        switch magic {
+        case 0xA1B2_C3D4, 0xA1B2_3C4D: swapped = false
+        case 0xD4C3_B2A1, 0x4D3C_B2A1: swapped = true
+        default: return false
+        }
+        func u32(_ o: Int) -> UInt32 { let v = bytes.u32le(o); return swapped ? v.byteSwapped : v }
+        var frames: [(TimeInterval, [UInt8])] = []
+        var off = 24
+        while off + 16 <= bytes.count {
+            let ts = TimeInterval(u32(off)) + TimeInterval(u32(off + 4)) / 1_000_000
+            let n = Int(u32(off + 8))
+            guard n <= 65_535, off + 16 + n <= bytes.count else { break }
+            frames.append((ts, Array(bytes[(off + 16)..<(off + 16 + n)])))
+            off += 16 + n
+        }
+        guard !frames.isEmpty else { return false }
+        transport.queue.async {
+            self.replayGeneration += 1
+            self.replayStep(frames, index: 0, generation: self.replayGeneration, progress: progress)
+        }
+        return true
+    }
+
+    func stopReplay() { transport.queue.async { self.replayGeneration += 1 } }
+
+    private func replayStep(_ frames: [(TimeInterval, [UInt8])], index: Int, generation: Int, progress: @escaping (Int, Int) -> Void) {
+        guard generation == replayGeneration, index < frames.count else { return }
+        let frame = frames[index].1
+        nextId &+= 1
+        handle(CitsPacket(sequence: UInt32(truncatingIfNeeded: nextId), timestampUs: UInt64(Date().timeIntervalSince1970 * 1e6),
+                          frequencyMhz: 5900, rssiDbm: 0, wifiType: 0, rxState: 0, flags: CitsPacket.flagBroadcast,
+                          originalLength: UInt16(clamping: frame.count), payload: frame), forward: false)
+        progress(index + 1, frames.count)
+        guard index + 1 < frames.count else { return }
+        let gap = min(1.0, max(0.0, frames[index + 1].0 - frames[index].0))
+        transport.queue.asyncAfter(deadline: .now() + gap) {
+            self.replayStep(frames, index: index + 1, generation: generation, progress: progress)
+        }
+    }
+
     // MARK: BleTransportDelegate (transport queue)
 
     func bleTransport(_ t: BleTransport, didReceive bytes: Data) {
@@ -183,10 +239,15 @@ final class PacketPipeline: BleTransportDelegate {
         case .unsupported(let reason, _): its = nil; note = reason
         }
         nextId += 1
-        pending.records.append(PacketRecord(
+        var record = PacketRecord(
             id: nextId, receivedAt: Date(), packet: packet, its: its, note: note,
             sourceMac: Ieee80211Mac.sourceAddress(packet.payload)
-        ))
+        )
+        if let its {
+            if its.messageId == 2 { record.cam = try? CamDenmDecoder.decodeCam(its) }
+            if its.messageId == 1 { record.denm = try? CamDenmDecoder.decodeDenm(its) }
+        }
+        pending.records.append(record)
         // Bound memory if the UI is not draining (e.g. app in background).
         if pending.records.count > 2_000 { pending.records.removeFirst(pending.records.count - 2_000) }
     }

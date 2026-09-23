@@ -3,7 +3,7 @@ import SwiftUI
 
 struct StationMapView: View {
     @Environment(BridgeModel.self) private var model
-    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var position: MapCameraPosition = .automatic
 
     private var located: [StationSummary] {
         model.stations.values.filter { $0.coordinate != nil }.sorted { $0.lastSeen > $1.lastSeen }
@@ -13,22 +13,36 @@ struct StationMapView: View {
         NavigationStack {
             Map(position: $position) {
                 ForEach(located) { s in
-                    Annotation(s.lastType, coordinate: s.coordinate!) {
+                    Annotation(s.summary ?? s.lastType, coordinate: s.coordinate!) {
                         ZStack {
-                            Circle().fill(MessageColor.of(s.lastType)).frame(width: 26, height: 26)
+                            Circle().fill(s.emergency ? Color.red : MessageColor.of(s.lastType)).frame(width: 26, height: 26)
                             Image(systemName: icon(for: s)).font(.caption.bold()).foregroundStyle(.white)
+                        }
+                        .overlay(alignment: .top) {
+                            if let h = s.headingDegrees, (s.speedKmh ?? 0) > 2 {
+                                Image(systemName: "arrowtriangle.up.fill").font(.system(size: 8))
+                                    .foregroundStyle(s.emergency ? Color.red : MessageColor.of(s.lastType))
+                                    .offset(y: -9).rotationEffect(.degrees(h), anchor: .center)
+                            }
                         }
                         .opacity(Date().timeIntervalSince(s.lastSeen) > 30 ? 0.45 : 1)
                     }
                 }
+                ForEach(model.warnings.values.filter { $0.coordinate != nil }) { w in
+                    Annotation(w.denm.causeLabel, coordinate: w.coordinate!) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title3).foregroundStyle(.white, .red)
+                            .shadow(radius: 2)
+                    }
+                }
             }
-            .mapControls { MapCompass(); MapScaleView() }
+            .mapControls { MapUserLocationButton(); MapCompass(); MapScaleView() }
             .safeAreaInset(edge: .bottom) {
                 if !located.isEmpty {
                     List(located.prefix(6)) { s in
                         HStack {
-                            Text("\(s.id)").font(.subheadline.monospacedDigit())
-                            Text(s.types.sorted().joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                            Text(verbatim: String(s.id)).font(.subheadline.monospacedDigit())
+                            Text(s.summary ?? s.types.sorted().joined(separator: ", ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             Spacer()
                             Text("\(s.count)× · \(s.rssi) dBm").font(.caption.monospacedDigit())
                         }
@@ -59,6 +73,7 @@ struct StationMapView: View {
         if s.types.contains("SPATEM") || s.types.contains("MAPEM") { return "light.beacon.max" }
         if s.types.contains("DENM") { return "exclamationmark" }
         if s.types.contains("IVIM") { return "signpost.right" }
+        if let t = s.stationType { return t.symbol }
         if s.types.contains("CAM") { return "car.fill" }
         return "antenna.radiowaves.left.and.right"
     }

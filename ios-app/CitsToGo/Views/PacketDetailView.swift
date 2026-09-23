@@ -17,6 +17,8 @@ struct PacketDetailView: View {
                     }
                     row("ITS-PDU", "\(its.payload.count) Bytes")
                 }
+                if let cam = record.cam { camSection(cam) }
+                if let denm = record.denm { denmSection(denm) }
             } else if let note = record.note {
                 Section("C-ITS") { Text(note).foregroundStyle(.secondary) }
             }
@@ -37,6 +39,41 @@ struct PacketDetailView: View {
         }
         .navigationTitle(record.title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder private func camSection(_ c: CamInfo) -> some View {
+        Section("Fahrzeug (CAM)") {
+            row("Typ", c.stationType.label)
+            if let role = c.vehicleRole, role != .default { row("Rolle", role.label) }
+            if c.lightBarActive || c.sirenActive {
+                row("Sondersignal", [c.lightBarActive ? "Blaulicht" : nil, c.sirenActive ? "Martinshorn" : nil].compactMap { $0 }.joined(separator: " und "))
+            }
+            row("Geschwindigkeit", c.speedKmh.map { String(format: "%.1f km/h", $0) } ?? "nicht verfügbar")
+            row("Fahrtrichtung", c.headingDegrees.map { String(format: "%.1f° (%@)", $0, compass($0)) } ?? "nicht verfügbar")
+            if let l = c.vehicleLengthM { row("Länge", String(format: "%.1f m", l)) }
+            if let w = c.vehicleWidthM { row("Breite", String(format: "%.1f m", w)) }
+            if !c.exteriorLights.isEmpty { row("Beleuchtung", c.exteriorLights.joined(separator: ", ")) }
+            if let lat = c.latitude, let lon = c.longitude { row("Position", String(format: "%.6f, %.6f", lat, lon)) }
+        }
+    }
+
+    @ViewBuilder private func denmSection(_ d: DenmInfo) -> some View {
+        Section("Warnung (DENM)") {
+            row("Ereignis", d.causeLabel)
+            if let sub = d.subCauseLabel { row("Detail", sub) }
+            if d.terminated { row("Status", "aufgehoben") }
+            row("Code", "\(d.causeCode.map(String.init) ?? "–")/\(d.subCauseCode.map(String.init) ?? "–")")
+            row("Erkannt", d.detectionTime.formatted(date: .abbreviated, time: .standard))
+            row("Gültig", "\(d.validitySeconds) s, bis \(d.expires.formatted(date: .omitted, time: .standard))")
+            row("Absender", "\(d.stationType.label) \(String(d.originatingStationId))")
+            row("Meldungsnummer", "\(d.sequenceNumber)")
+            if let q = d.informationQuality { row("Informationsqualität", "\(q) von 7") }
+            if let lat = d.latitude, let lon = d.longitude { row("Ort", String(format: "%.6f, %.6f", lat, lon)) }
+        }
+    }
+
+    private func compass(_ deg: Double) -> String {
+        ["N", "NO", "O", "SO", "S", "SW", "W", "NW"][Int(((deg + 22.5).truncatingRemainder(dividingBy: 360)) / 45)]
     }
 
     private func row(_ k: String, _ v: String) -> some View {

@@ -138,8 +138,15 @@ struct SignalPhaseTable: View {
                                 Circle().fill(PhaseColors.color(m.currentEvent?.state)).frame(width: 10, height: 10)
                                 Text(m.currentEvent?.state.label ?? "–").font(.subheadline)
                             }
-                            Text(m.currentEvent.flatMap { spat.secondsUntilChange($0, now: context.date) }.map { "\($0) s" } ?? "–")
-                                .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                            HStack(spacing: 6) {
+                                Text(m.currentEvent.flatMap { spat.secondsUntilChange($0, now: context.date) }.map { "\($0) s" } ?? "–")
+                                    .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                                if let v = m.currentEvent?.advisorySpeedKmh {
+                                    Text("\(v) km/h").font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 5).padding(.vertical, 1)
+                                        .background(Capsule().fill(PhaseColors.go.opacity(0.18)))
+                                }
+                            }
                         }
                     }
                 }

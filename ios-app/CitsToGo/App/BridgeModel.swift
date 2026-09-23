@@ -17,6 +17,23 @@ struct StationSummary: Identifiable {
     var rssi: Int
     var coordinate: CLLocationCoordinate2D?
     var secured: Bool
+    var stationType: StationType? = nil
+    var speedKmh: Double? = nil
+    var headingDegrees: Double? = nil
+    var emergency = false
+    var summary: String? = nil
+}
+
+/// An active DENM warning, keyed by its action ID (originating station + sequence number).
+struct WarningSummary: Identifiable {
+    var id: String { "\(denm.originatingStationId)-\(denm.sequenceNumber)" }
+    var denm: DenmInfo
+    var lastSeen: Date
+    var count: Int
+    var coordinate: CLLocationCoordinate2D? {
+        guard let lat = denm.latitude, let lon = denm.longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
 }
 
 @MainActor
@@ -30,6 +47,7 @@ final class BridgeModel {
     private(set) var mqttState: MqttClient.State = .disabled
     private(set) var recent: [PacketRecord] = []
     private(set) var stations: [UInt32: StationSummary] = [:]
+    private(set) var warnings: [String: WarningSummary] = [:]
     private(set) var countsByType: [String: Int] = [:]
     private(set) var totalPackets = 0
     private(set) var packetsPerSecond = 0.0
@@ -97,6 +115,11 @@ final class BridgeModel {
         applyMqtt()
         if autoConnect { pipeline.transport.start() }
         if ProcessInfo.processInfo.arguments.contains("-demo") { toggleDemo() }
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-replay"), i + 1 < args.count {
+            let url = PcapWriter.capturesDirectory.appendingPathComponent(args[i + 1])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.startReplay(url: url) }
+        }
 
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -129,6 +152,7 @@ final class BridgeModel {
     func clear() {
         recent.removeAll()
         stations.removeAll()
+        warnings.removeAll()
         countsByType.removeAll()
         totalPackets = 0
         missingSequences = 0
@@ -137,6 +161,35 @@ final class BridgeModel {
     }
 
     func flushRecording() { pipeline.flushRecording() }
+
+    private(set) var replay: (name: String, played: Int, total: Int)?
+
+    /// Plays a PCAP through all views (not forwarded, not recorded).
+    func startReplay(url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { record("Aufnahme konnte nicht gelesen werden: \(url.lastPathComponent)"); return }
+        let name = url.lastPathComponent
+        let ok = pipeline.startReplay(data) { [weak self] played, total in
+            Task { @MainActor in
+                guard let self else { return }
+                self.replay = played >= total ? nil : (name, played, total)
+                if played >= total { self.record("Wiedergabe beendet: \(name) (\(total) Pakete)") }
+            }
+        }
+        if ok {
+            replay = (name, 0, 0)
+            record("Wiedergabe gestartet: \(name)")
+        } else {
+            record("Keine gültige PCAP-Datei: \(name)")
+        }
+    }
+
+    func stopReplay() {
+        pipeline.stopReplay()
+        if let r = replay { record("Wiedergabe gestoppt: \(r.name)") }
+        replay = nil
+    }
 
     private(set) var demoRunning = false
     func toggleDemo() {
@@ -173,6 +226,8 @@ final class BridgeModel {
         let span = max(1, now.timeIntervalSince(rateWindow.first?.0 ?? now) + 0.25)
         packetsPerSecond = Double(rateWindow.reduce(0) { $0 + $1.1 }) / span
 
+        // Drop warnings that were cancelled or are past their validity (and not repeated for 60 s).
+        warnings = warnings.filter { !$0.value.denm.terminated && (now < $0.value.denm.expires || now.timeIntervalSince($0.value.lastSeen) < 60) }
         guard !d.records.isEmpty else { return }
         totalPackets += d.records.count
         for r in d.records {
@@ -190,7 +245,24 @@ final class BridgeModel {
             if let lat = its.sourceLatitude, let lon = its.sourceLongitude {
                 s.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
             }
+            if let cam = r.cam {
+                s.stationType = cam.stationType
+                s.speedKmh = cam.speedKmh
+                s.headingDegrees = cam.headingDegrees
+                s.emergency = cam.isEmergency
+                s.summary = cam.summary
+                if let lat = cam.latitude, let lon = cam.longitude {
+                    s.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                }
+            }
+            if let denm = r.denm { s.summary = "Meldet: \(denm.summary)" }
             stations[its.stationId] = s
+            if let denm = r.denm {
+                let key = "\(denm.originatingStationId)-\(denm.sequenceNumber)"
+                var w = warnings[key] ?? WarningSummary(denm: denm, lastSeen: r.receivedAt, count: 0)
+                w.denm = denm; w.lastSeen = r.receivedAt; w.count += 1
+                warnings[key] = w
+            }
         }
         recent.insert(contentsOf: d.records.reversed(), at: 0)
         if recent.count > Self.maxRecentPackets { recent.removeLast(recent.count - Self.maxRecentPackets) }
