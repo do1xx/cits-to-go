@@ -1,0 +1,5 @@
+// Copy to BuiltInServers.swift and fill in the upload account of your own broker.
+enum BuiltInServers {
+    static let communityName = "1xx-Server"
+    static let communityUri = "mqtts://cits-upload:PASSWORD@mqtt.example.org:8883"
+}

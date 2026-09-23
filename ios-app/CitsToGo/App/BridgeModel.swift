@@ -38,6 +38,8 @@ final class BridgeModel {
     private(set) var lastError: String?
     private(set) var firmware: FirmwareStatistics?
     private(set) var mqttCounters: (published: UInt64, dropped: UInt64, spooled: Int) = (0, 0, 0)
+    private(set) var communityState: MqttClient.State = .disabled
+    private(set) var communityCounters: (published: UInt64, dropped: UInt64, spooled: Int) = (0, 0, 0)
     private(set) var recordingURL: URL?
     var showEnrollmentHint = false
     private(set) var eventLog: [LogEntry] = []
@@ -47,6 +49,7 @@ final class BridgeModel {
     // Settings (persisted)
     var mqttEnabled: Bool { didSet { persist(); applyMqtt() } }
     var mqttUri: String { didSet { persist() } }
+    var communityEnabled: Bool { didSet { persist(); applyMqtt() } }
     var nodeId: String { didSet { persist() } }
     var autoConnect: Bool { didSet { persist() } }
 
@@ -67,6 +70,7 @@ final class BridgeModel {
         let d = UserDefaults.standard
         mqttEnabled = d.bool(forKey: "mqtt.enabled")
         mqttUri = d.string(forKey: "mqtt.uri") ?? Self.defaultMqttUri
+        communityEnabled = d.object(forKey: "mqtt.community.enabled") as? Bool ?? true
         autoConnect = d.object(forKey: "ble.autoConnect") as? Bool ?? true
         if let id = d.string(forKey: "node.id"), !id.isEmpty {
             nodeId = id
@@ -83,7 +87,13 @@ final class BridgeModel {
                 self?.record("MQTT: \(s.label)")
             }
         }
-        record("App gestartet (Version \(appVersion), MQTT \(mqttEnabled ? "an" : "aus"), Node \(nodeId))")
+        pipeline.community.onStateChange = { [weak self] s in
+            Task { @MainActor in
+                self?.communityState = s
+                self?.record("\(BuiltInServers.communityName): \(s.label)")
+            }
+        }
+        record("App gestartet (Version \(appVersion), OpenTrafficMap \(mqttEnabled ? "an" : "aus"), \(BuiltInServers.communityName) \(communityEnabled ? "an" : "aus"), Node \(nodeId))")
         applyMqtt()
         if autoConnect { pipeline.transport.start() }
         if ProcessInfo.processInfo.arguments.contains("-demo") { toggleDemo() }
@@ -108,6 +118,8 @@ final class BridgeModel {
     func applyMqtt() {
         pipeline.setMqttEnabled(mqttEnabled)
         pipeline.mqtt.configure(mqttEnabled ? .init(uri: mqttUri, nodeId: nodeId, appVersion: appVersion) : nil)
+        pipeline.setCommunityEnabled(communityEnabled)
+        pipeline.community.configure(communityEnabled ? .init(uri: BuiltInServers.communityUri, nodeId: nodeId, appVersion: appVersion) : nil)
     }
 
     func toggleRecording() {
@@ -150,9 +162,10 @@ final class BridgeModel {
         missingSequences += UInt64(d.missingSequences)
         if let e = d.lastError { lastError = e }
         mqttCounters = pipeline.mqtt.counters()
+        communityCounters = pipeline.community.counters()
         if now.timeIntervalSince(lastSummary) >= 60 {
             lastSummary = now
-            record("Minute: \(totalPackets) Pakete gesamt, \(String(format: "%.1f", packetsPerSecond))/s · BLE \(linkState.label) · MQTT \(mqttState.label), \(mqttCounters.published) gesendet, \(mqttCounters.dropped) verworfen, \(mqttCounters.spooled) wartend")
+            record("Minute: \(totalPackets) Pakete gesamt, \(String(format: "%.1f", packetsPerSecond))/s · BLE \(linkState.label) · OTM \(mqttState.label), \(mqttCounters.published) gesendet, \(mqttCounters.spooled) wartend · 1xx \(communityState.label), \(communityCounters.published) gesendet, \(communityCounters.spooled) wartend")
         }
 
         rateWindow.append((now, d.records.count))
@@ -187,6 +200,7 @@ final class BridgeModel {
         let d = UserDefaults.standard
         d.set(mqttEnabled, forKey: "mqtt.enabled")
         d.set(mqttUri, forKey: "mqtt.uri")
+        d.set(communityEnabled, forKey: "mqtt.community.enabled")
         d.set(nodeId, forKey: "node.id")
         d.set(autoConnect, forKey: "ble.autoConnect")
     }

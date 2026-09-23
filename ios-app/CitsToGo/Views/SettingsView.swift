@@ -21,6 +21,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("An \(BuiltInServers.communityName) senden", isOn: $model.communityEnabled)
+                    LabeledContent("Status", value: model.communityEnabled ? model.communityState.label : "Aus")
+                    LabeledContent("Gesendet / verworfen", value: "\(model.communityCounters.published) / \(model.communityCounters.dropped)")
+                } header: {
+                    Text("Gemeinsamer Server")
+                } footer: {
+                    Text("Sendet die empfangenen Funkpakete an mqtt.dirksreich.de, damit alle Empfänger gesammelt auf cits.dirksreich.de sichtbar sind. Deine eigene Position wird nicht übertragen.")
+                }
+
+                Section {
                     Toggle("An MQTT weiterleiten", isOn: $model.mqttEnabled)
                     TextField("mqtts://user:pass@host:8883", text: $model.mqttUri)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
@@ -31,7 +41,7 @@ struct SettingsView: View {
                     LabeledContent("Gesendet / verworfen", value: "\(model.mqttCounters.published) / \(model.mqttCounters.dropped)")
                     Button("OpenTrafficMap-Standard") { model.mqttUri = BridgeModel.defaultMqttUri }
                 } header: {
-                    Text("Weiterleitung")
+                    Text("OpenTrafficMap / eigener Broker")
                 } footer: {
                     Text("Topics wie beim OpenTrafficMap-Empfänger: its/\(model.nodeId)/packet (rohe 802.11-Frames), …/status, …/info, …/stats. Offline werden bis zu \(MqttClient.maxSpool) Pakete zwischengespeichert.")
                 }

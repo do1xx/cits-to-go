@@ -30,7 +30,8 @@ struct PipelineDrain {
 /// forwarding (MQTT + PCAP) happen here, off the main thread. The UI drains batches.
 final class PacketPipeline: BleTransportDelegate {
     let transport = BleTransport()
-    let mqtt = MqttClient()
+    let mqtt = MqttClient()            // OpenTrafficMap (or a user-defined broker)
+    let community = MqttClient()       // built-in 1xx community broker
 
     private var reader = CtgStreamReader()
     private var sequence = CaptureSequenceTracker()
@@ -38,6 +39,7 @@ final class PacketPipeline: BleTransportDelegate {
     private var pending = PipelineDrain()
     private var nextId: UInt64 = 0
     private var mqttEnabled = false
+    private var communityEnabled = false
     private var intersectionStore = IntersectionStore()
     private var intersectionsDirty = false
     private var lastIntersectionPublish = Date.distantPast
@@ -63,6 +65,7 @@ final class PacketPipeline: BleTransportDelegate {
     }
 
     func setMqttEnabled(_ enabled: Bool) { transport.queue.async { self.mqttEnabled = enabled } }
+    func setCommunityEnabled(_ enabled: Bool) { transport.queue.async { self.communityEnabled = enabled } }
 
     /// Starts or stops PCAP recording; returns the file URL when a capture was started.
     func setRecording(_ on: Bool) -> URL? {
@@ -167,6 +170,7 @@ final class PacketPipeline: BleTransportDelegate {
         if forward {
             pending.missingSequences += sequence.observe(packet.sequence)
             if mqttEnabled { mqtt.publishPacket(packet.payload) }
+            if communityEnabled { community.publishPacket(packet.payload) }
             pcap?.write(packet)
         }
 

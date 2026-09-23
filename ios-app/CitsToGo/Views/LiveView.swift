@@ -89,15 +89,10 @@ struct StatusCard: View {
                 Metric(value: "\(model.stations.count)", label: "Stationen")
                 Metric(value: "\(model.missingSequences)", label: "verloren")
             }
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.forward.circle")
-                Text("MQTT: \(model.mqttState.label)")
-                if model.mqttEnabled {
-                    Text("· \(model.mqttCounters.published) gesendet")
-                    if model.mqttCounters.spooled > 0 { Text("· \(model.mqttCounters.spooled) in Warteschlange") }
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                ForwardLine(name: "OpenTrafficMap", enabled: model.mqttEnabled, state: model.mqttState, counters: model.mqttCounters)
+                ForwardLine(name: BuiltInServers.communityName, enabled: model.communityEnabled, state: model.communityState, counters: model.communityCounters)
             }
-            .font(.caption).foregroundStyle(.secondary)
             if let url = model.recordingURL {
                 Label("Aufnahme läuft: \(url.lastPathComponent)", systemImage: "record.circle")
                     .font(.caption).foregroundStyle(.red)
@@ -176,5 +171,25 @@ enum MessageColor {
         case "VAM": .pink
         default: .gray
         }
+    }
+}
+
+private struct ForwardLine: View {
+    let name: String
+    let enabled: Bool
+    let state: MqttClient.State
+    let counters: (published: UInt64, dropped: UInt64, spooled: Int)
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: state == .connected ? "arrow.up.circle.fill" : "arrow.up.circle")
+                .foregroundStyle(state == .connected ? .green : .secondary)
+            Text("\(name): \(enabled ? state.label : "aus")")
+            if enabled {
+                Text("– \(counters.published) gesendet")
+                if counters.spooled > 0 { Text("– \(counters.spooled) wartend") }
+            }
+        }
+        .font(.caption).foregroundStyle(.secondary)
     }
 }

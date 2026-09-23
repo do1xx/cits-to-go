@@ -7,15 +7,17 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
     DEVELOPMENT_TEAM: K77H3ATFTR
     CODE_SIGN_STYLE: Automatic
 targets:
   CitsToGo:
     type: application
     platform: iOS
-    sources: [CitsToGo]
+    sources:
+      - path: CitsToGo
+        excludes: ["**/*.example"]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dirkreich.citstogo

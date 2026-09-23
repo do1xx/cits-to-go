@@ -271,3 +271,6 @@ pyrightconfig.json
 
 # Local credentials (never commit)
 .secrets/
+
+# Embedded broker credentials (generated from .secrets)
+ios-app/CitsToGo/App/BuiltInServers.swift
