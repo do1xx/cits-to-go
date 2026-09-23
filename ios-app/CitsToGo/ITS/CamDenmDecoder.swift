@@ -113,8 +113,9 @@ struct DenmInfo: Sendable {
 
 /// Decodes CAM and DENM (protocol versions 1 and 2, EN 302 637-2 / -3).
 enum CamDenmDecoder {
-    /// ITS epoch: 2004-01-01T00:00:00Z. TimestampIts counts milliseconds since then (TAI, leap seconds ignored).
-    static let itsEpoch = Date(timeIntervalSince1970: 1_072_915_200)
+    /// TimestampIts counts TAI milliseconds since 2004-01-01T00:00:00Z. Five leap seconds have been
+    /// inserted since then (2005, 2008, 2012, 2015, 2016), so UTC = epoch + ms − 5 s.
+    static let itsEpoch = Date(timeIntervalSince1970: 1_072_915_200 - 5)
 
     static func decodeCam(_ its: ItsPacketInfo) throws -> CamInfo {
         guard its.messageId == 2, (1...2).contains(its.protocolVersion) else { throw IntersectionDecodeError("Kein CAM") }

@@ -12,8 +12,12 @@ server {
         add_header Cache-Control "no-cache";
         types { application/octet-stream bin; application/json json; }
     }
-    location ~* \.(png|js|css)$ {
+    location ~* \.png$ {
         expires 1h;
+    }
+    # Skripte bei jedem Aufruf per ETag prüfen, damit Updates sofort ankommen
+    location ~* \.(js|css|html)$ {
+        add_header Cache-Control "no-cache";
     }
 
     listen 80;

@@ -49,6 +49,7 @@ function parseCommon(f, common, secured) {
     type: MESSAGE_TYPES[messageId] || PORT_TYPES[port] || `msg ${messageId}`,
     stationId: u32(f, its + 2),
     lat, lon,
+    pdu: f.subarray(its, btp + payloadLength),
   };
 }
 

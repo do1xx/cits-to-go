@@ -184,8 +184,8 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(denm.subCauseCode, 0)
         XCTAssertEqual(denm.validitySeconds, 60)
         XCTAssertEqual(denm.causeLabel, "Verkehrsstörung")
-        // detectionTime 716993747244 ms after 2004-01-01 = 2026-09-20 12:55:42 (+5 s TAI offset displayed by tshark ignored)
-        XCTAssertEqual(denm.detectionTime.timeIntervalSince1970, 1_072_915_200 + 716_993_747.244, accuracy: 0.001)
+        // Wireshark: detectionTime 2026-09-20 12:55:42.244 UTC (716993747244 TAI ms since 2004, minus 5 leap seconds)
+        XCTAssertEqual(denm.detectionTime.timeIntervalSince1970, 1_072_915_200 + 716_993_747.244 - 5, accuracy: 0.001)
     }
 
     func testPcapWriterHeaderAndRecord() throws {

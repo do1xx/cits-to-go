@@ -216,10 +216,10 @@
           <p>Der Empfänger benötigt nur eine Stromversorgung über USB, etwa eine Powerbank oder ein Kfz-Ladegerät. Die App besteht aus fünf Bereichen:</p>
           <table>
             <tbody>
-              <tr><th scope="row">Live</th><td>Empfangene Nachrichten mit Typ, Station, Signalstärke und Rohdaten</td></tr>
+              <tr><th scope="row">Live</th><td>Empfangene Nachrichten im Klartext: Fahrzeugtyp und Geschwindigkeit (CAM), Warnungen wie Stau, Panne oder Baustelle (DENM), dazu Rohdaten</td></tr>
               <tr><th scope="row">Kreuzungen</th><td>MAPEM-Geometrie mit SPATEM-Phasen: <span class="phase" style="background:var(--green)"></span>frei, <span class="phase" style="background:var(--amber)"></span>Übergang, <span class="phase" style="background:var(--red)"></span>Halt, mit Restzeit</td></tr>
               <tr><th scope="row">Karte</th><td>Sender an ihrer GeoNetworking-Position</td></tr>
-              <tr><th scope="row">Aufnahmen</th><td>PCAP-Mitschnitte (IEEE 802.11) für Wireshark</td></tr>
+              <tr><th scope="row">Aufnahmen</th><td>PCAP-Mitschnitte für Wireshark; vorhandene Mitschnitte lassen sich in der App abspielen</td></tr>
               <tr><th scope="row">Einstellungen</th><td>Weiterleitung, Diagnoseprotokoll, Demo-Kreuzung</td></tr>
             </tbody>
           </table>
@@ -230,7 +230,7 @@
 
     <section id="weiterleitung">
       <h2>Datenweiterleitung</h2>
-      <p>Die App kann empfangene Pakete per MQTT weiterleiten. Die Weiterleitung ist standardmäßig ausgeschaltet. Übertragen werden die empfangenen Funkpakete, nicht die Position des Telefons. Das Format entspricht dem Empfänger von <a href="https://opentrafficmap.org">OpenTrafficMap</a>:</p>
+      <p>Die App leitet empfangene Pakete per MQTT an den gemeinsamen Server <code>mqtt.dirksreich.de</code> weiter; alle Empfänger erscheinen dann auf der <a href="live.html">Live-Seite</a>. Zusätzlich lässt sich OpenTrafficMap oder ein eigener Broker einschalten. Beide Ziele sind in den Einstellungen einzeln abschaltbar. Übertragen werden die empfangenen Funkpakete, nicht die Position des Telefons. Das Format entspricht dem Empfänger von <a href="https://opentrafficmap.org">OpenTrafficMap</a>:</p>
       <table>
         <thead><tr><th>Topic</th><th>Inhalt</th></tr></thead>
         <tbody>

@@ -55,6 +55,8 @@
   .feed thead th { position: sticky; top: 0; background: var(--bg); }
   .type { display: inline-block; min-width: 4.2rem; font-weight: 700; }
   .empty { color: var(--muted); padding: 1rem 0; }
+  .warnings { margin: 0 0 1.5rem; }
+  .warnings td:first-child { color: var(--red); font-weight: 700; }
   .note { color: var(--muted); font-size: 0.9rem; margin-top: 1.5rem; max-width: 50rem; }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } #map { height: 22rem; } }
 </style>
@@ -77,6 +79,11 @@
   </div>
   <div class="counts" id="counts"><span>Noch keine Nachrichten seit dem Öffnen der Seite.</span></div>
 
+  <section class="warnings" id="warnings-box" hidden>
+    <h2>Aktive Warnungen</h2>
+    <table><thead><tr><th>Warnung</th><th>Absender</th><th>Erkannt</th><th>Gültig bis</th></tr></thead><tbody id="warnings"></tbody></table>
+  </section>
+
   <div class="grid">
     <div id="map" role="region" aria-label="Karte der Sender"></div>
     <div>
@@ -92,7 +99,7 @@
     <h2>Eingehende Nachrichten</h2>
     <div class="scroll">
       <table>
-        <thead><tr><th>Zeit</th><th>Typ</th><th>Station</th><th>Empfänger</th><th>Position</th><th class="num">Bytes</th></tr></thead>
+        <thead><tr><th>Zeit</th><th>Typ</th><th>Inhalt</th><th>Station</th><th>Empfänger</th><th class="num">Bytes</th></tr></thead>
         <tbody id="feed"><tr><td colspan="6" class="empty">Sobald ein Empfänger etwas hört, erscheint es hier.</td></tr></tbody>
       </table>
     </div>
@@ -105,11 +112,13 @@
 <script src="live-config.js"></script>
 <script type="module">
   import mqtt from "https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.esm.js";
-  import { extractIts } from "./its.js";
+  import { extractIts } from "./its.js?v=4";
+  import { decodeCam, decodeDenm, camSummary, denmSummary, STATION_TYPES } from "./camdenm.js?v=4";
 
   const COLORS = { CAM: "#0b4f8a", DENM: "#c4231c", SPATEM: "#1c8a43", MAPEM: "#157a6e", IVIM: "#b77f00", CPM: "#6b3fa0" };
   const nodes = new Map();        // node -> {online, packets, last, info}
   const stations = new Map();     // stationId -> {marker, type, last}
+  const warningMarkers = new Map();
   const counts = {};
   let total = 0;
 
@@ -141,7 +150,26 @@
     $("counts").innerHTML = `<span>Seit dem Öffnen <b>${total}</b> Nachrichten</span>` + parts.join("");
   }
 
-  function addFeed(node, its, len) {
+  const warnings = new Map();   // "origin-seq" -> {denm, last}
+  function renderWarnings() {
+    const now = Date.now();
+    for (const [k, w] of warnings) if (w.denm.terminated || (now > w.denm.referenceTime.getTime() + w.denm.validity * 1000 && now - w.last > 60000)) warnings.delete(k);
+    $("warnings-box").hidden = warnings.size === 0;
+    $("warnings").innerHTML = [...warnings.values()].sort((a, b) => b.last - a.last).map((w) =>
+      `<tr><td>${esc(denmSummary(w.denm))}</td><td>${esc(STATION_TYPES[w.denm.stationType] || "")} <span class="mono">${w.denm.originatingStationId}</span></td>`
+      + `<td class="mono">${w.denm.detectionTime.toLocaleTimeString("de-DE")}</td>`
+      + `<td class="mono">${new Date(w.denm.referenceTime.getTime() + w.denm.validity * 1000).toLocaleTimeString("de-DE")}</td></tr>`).join("");
+  }
+
+  function decodeContent(its) {
+    try {
+      if (its.messageId === 2) { const c = decodeCam(its.pdu); return { text: camSummary(c), cam: c, alert: c.lightBar || c.siren }; }
+      if (its.messageId === 1) { const d = decodeDenm(its.pdu); return { text: denmSummary(d), denm: d, alert: true }; }
+    } catch {}
+    return null;
+  }
+
+  function addFeed(node, its, len, content) {
     const tbody = $("feed");
     if (tbody.querySelector(".empty")) tbody.innerHTML = "";
     const tr = document.createElement("tr");
@@ -149,16 +177,18 @@
     const pos = its.lat != null ? `${its.lat.toFixed(5)}, ${its.lon.toFixed(5)}` : "–";
     tr.innerHTML = `<td class="mono">${time(Date.now())}</td>`
       + `<td><span class="type" style="color:${COLORS[type] || "inherit"}">${esc(type)}</span>${its.secured ? ' <span class="muted" title="signiert">🔒</span>' : ""}</td>`
+      + `<td${content?.alert ? ' style="color:var(--red);font-weight:700"' : ""}>${content ? esc(content.text) : '<span class="muted">' + pos + "</span>"}</td>`
       + `<td class="mono">${its.error ? '<span class="muted">' + esc(its.error) + "</span>" : its.stationId}</td>`
-      + `<td class="mono">${esc(node)}</td><td class="mono muted">${pos}</td><td class="num">${len}</td>`;
+      + `<td class="mono">${esc(node)}</td><td class="num">${len}</td>`;
     tbody.prepend(tr);
     while (tbody.children.length > 200) tbody.lastChild.remove();
   }
 
-  function addStation(its) {
+  function addStation(its, content) {
+    if (content?.cam?.lat != null) { its = { ...its, lat: content.cam.lat, lon: content.cam.lon }; }
     if (its.error || its.lat == null) return;
     let s = stations.get(its.stationId);
-    const color = COLORS[its.type] || "#5d6770";
+    const color = content?.alert ? "#c4231c" : COLORS[its.type] || "#5d6770";
     if (!s) {
       const marker = L.circleMarker([its.lat, its.lon], { radius: 7, color: "#fff", weight: 2, fillColor: color, fillOpacity: 0.95 }).addTo(map);
       s = { marker, types: new Set() };
@@ -166,7 +196,16 @@
     }
     s.types.add(its.type);
     s.marker.setLatLng([its.lat, its.lon]).setStyle({ fillColor: color });
-    s.marker.bindTooltip(`Station ${its.stationId}<br>${[...s.types].join(", ")}<br>${time(Date.now())}`);
+    s.marker.bindTooltip(`Station ${its.stationId}<br>${esc(content?.text || [...s.types].join(", "))}<br>${time(Date.now())}`);
+    if (content?.denm?.lat != null) {
+      const key = `${content.denm.originatingStationId}-${content.denm.sequenceNumber}`;
+      if (!s.warn) s.warn = new Map();
+      if (!warningMarkers.has(key)) {
+        warningMarkers.set(key, L.marker([content.denm.lat, content.denm.lon], {
+          icon: L.divIcon({ className: "", html: '<div style="font-size:22px;line-height:22px">⚠️</div>', iconSize: [22, 22] }),
+        }).addTo(map).bindTooltip(esc(content.text)));
+      }
+    }
     if (!fitted) { map.setView([its.lat, its.lon], 14); fitted = true; }
   }
 
@@ -192,16 +231,21 @@
       else if (leaf === "packet") {
         const frame = new Uint8Array(payload);
         const its = extractIts(frame);
+        const content = its.error ? null : decodeContent(its);
         n.packets++; n.last = Date.now(); n.online = true;
         total++; const t = its.error ? "unbekannt" : its.type; counts[t] = (counts[t] || 0) + 1;
-        addFeed(node, its, frame.length);
-        addStation(its);
+        addFeed(node, its, frame.length, content);
+        addStation(its, content);
+        if (content?.denm) {
+          warnings.set(`${content.denm.originatingStationId}-${content.denm.sequenceNumber}`, { denm: content.denm, last: Date.now() });
+          renderWarnings();
+        }
         renderCounts();
       }
       renderNodes();
     });
   }
-  setInterval(renderNodes, 5000);
+  setInterval(() => { renderNodes(); renderWarnings(); }, 5000);
 </script>
 </body>
 </html>
