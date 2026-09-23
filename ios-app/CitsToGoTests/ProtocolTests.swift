@@ -153,7 +153,10 @@ final class ProtocolTests: XCTestCase {
 
     /// Reference values taken from Wireshark's dissection of the same capture.
     func testCamAndDenmMatchWireshark() throws {
-        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "julian-cam-denm", withExtension: "pcap"))
+        // Private field recording, kept out of git (*.pcap); the test is skipped without it.
+        guard let url = Bundle(for: Self.self).url(forResource: "julian-cam-denm", withExtension: "pcap") else {
+            throw XCTSkip("julian-cam-denm.pcap not present")
+        }
         let d = [UInt8](try Data(contentsOf: url))
         var off = 24
         var cams: [CamInfo] = [], denms: [DenmInfo] = []
