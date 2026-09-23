@@ -27,6 +27,7 @@ targets:
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Weiterleitung der C-ITS Pakete an einen MQTT-Broker im lokalen Netz."
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
     info:
