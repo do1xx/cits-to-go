@@ -1,3 +1,9 @@
+# Anonyme Clients (ohne Benutzer/Passwort): nur schreiben, nur die Empfänger-Topics, kein Lesen
+topic write its/+/packet
+topic write its/+/status
+topic write its/+/info
+topic write its/+/stats
+
 # Receivers publish their packets, status, info and stats
 user cits-upload
 topic write its/#
