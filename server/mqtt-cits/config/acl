@@ -9,3 +9,7 @@ topic read its/#
 # Archiver and maintenance
 user cits-admin
 topic readwrite #
+
+# Fester Empfänger 3844be200e94 (Raspberry Pi), darf nur unter der eigenen Node-ID schreiben
+user station-3844be200e94
+topic write its/3844be200e94/#

@@ -105,15 +105,15 @@
     </div>
   </section>
 
-  <p class="note">Angezeigt werden die Daten aller Empfänger, deren App an den 1xx-Server sendet. Die Karte zeigt die Position der Sender (Fahrzeuge und Ampeln) aus ihren GeoNetworking-Paketen, nicht die Position der Empfänger. Nachrichten vor dem Öffnen der Seite werden nicht nachgeladen.</p>
+  <p class="note">Angezeigt werden die Daten aller Empfänger, deren App an den 1xx-Server sendet. Die Karte zeigt die Sender (Fahrzeuge und Ampeln) an der Position aus ihren Paketen; feste Empfänger mit eingetragenem Standort erscheinen als dunkles Quadrat. Mobile Empfänger (Apps) übertragen ihre Position nicht. Nachrichten vor dem Öffnen der Seite werden nicht nachgeladen.</p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="live-config.js"></script>
 <script type="module">
   import mqtt from "https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.esm.js";
-  import { extractIts } from "./its.js?v=4";
-  import { decodeCam, decodeDenm, camSummary, denmSummary, STATION_TYPES } from "./camdenm.js?v=4";
+  import { extractIts } from "./its.js?v=5";
+  import { decodeCam, decodeDenm, camSummary, denmSummary, STATION_TYPES } from "./camdenm.js?v=5";
 
   const COLORS = { CAM: "#0b4f8a", DENM: "#c4231c", SPATEM: "#1c8a43", MAPEM: "#157a6e", IVIM: "#b77f00", CPM: "#6b3fa0" };
   const nodes = new Map();        // node -> {online, packets, last, info}
@@ -140,7 +140,8 @@
     const rows = [...nodes.entries()].sort((a, b) => (b[1].last || 0) - (a[1].last || 0)).map(([id, n]) => {
       const recent = n.last && Date.now() - n.last < 120000;
       const status = n.online === false ? '<span class="offline">offline</span>' : (recent || n.online) ? '<span class="online">online</span>' : '<span class="offline">still</span>';
-      return `<tr><td class="mono">${esc(id)}</td><td>${status}</td><td class="num">${n.packets}</td><td class="num">${n.last ? ago(n.last) : "–"}</td></tr>`;
+      const label = n.info?.name ? `${esc(n.info.name)}<br><span class="mono muted">${esc(id)}</span>` : `<span class="mono">${esc(id)}</span>`;
+      return `<tr><td>${label}</td><td>${status}</td><td class="num">${n.packets}</td><td class="num">${n.last ? ago(n.last) : "–"}</td></tr>`;
     });
     $("nodes").innerHTML = rows.join("");
   }
@@ -227,7 +228,19 @@
       const n = nodes.get(node) || { packets: 0, last: 0, online: undefined };
       nodes.set(node, n);
       if (leaf === "status") { const v = new TextDecoder().decode(payload); n.online = v === "online" ? true : v === "offline" ? false : undefined; }
-      else if (leaf === "info") { try { n.info = JSON.parse(new TextDecoder().decode(payload)); } catch {} }
+      else if (leaf === "info") {
+        try { n.info = JSON.parse(new TextDecoder().decode(payload)); } catch {}
+        if (n.info && Number.isFinite(n.info.lat) && Number.isFinite(n.info.lon)) {
+          if (!n.marker) {
+            n.marker = L.marker([n.info.lat, n.info.lon], {
+              icon: L.divIcon({ className: "", iconSize: [16, 16],
+                html: '<div style="width:16px;height:16px;background:#1f2428;border:3px solid #fff;border-radius:3px;box-shadow:0 0 0 1px #1f2428"></div>' }),
+            }).addTo(map);
+          }
+          n.marker.setLatLng([n.info.lat, n.info.lon]).bindTooltip(`Empfänger ${esc(n.info.name || node)}`);
+          if (!fitted) { map.setView([n.info.lat, n.info.lon], 14); fitted = true; }
+        }
+      }
       else if (leaf === "packet") {
         const frame = new Uint8Array(payload);
         const its = extractIts(frame);

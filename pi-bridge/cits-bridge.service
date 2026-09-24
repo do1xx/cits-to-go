@@ -1,0 +1,20 @@
+[Unit]
+Description=CITS-to-go USB-MQTT-Bridge (feste C-ITS-Station)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cits
+Group=dialout
+EnvironmentFile=/etc/cits-bridge.env
+ExecStart=/opt/cits-bridge/venv/bin/python /opt/cits-bridge/cits_bridge.py
+Restart=always
+RestartSec=5
+# Minimal-Rechte
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
