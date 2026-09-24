@@ -1,7 +1,8 @@
 # CITS-to-go MQTT broker on mqtt.dirksreich.de
 #   8883/tcp  MQTT over TLS for the apps (public)
 #   9002/tcp  MQTT over WebSocket, localhost only; nginx serves it as wss://mqtt.dirksreich.de/mqtt
-#   1883/tcp  plain MQTT on the internal compose network only (archiver)
+#   1883/tcp  plain MQTT on the internal compose network only (archiver, ingest)
+#   5434/tcp  TimescaleDB (packets), localhost only
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -27,3 +28,26 @@ services:
       MQTT_PORT: "1883"
     volumes:
       - ./archive:/archive
+
+  db:
+    image: timescale/timescaledb:2.30.1-pg16
+    container_name: mqtt-cits-db
+    restart: unless-stopped
+    env_file: .env.db
+    ports:
+      - "127.0.0.1:5434:5432"     # nur lokal / per SSH-Tunnel
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=30"]
+    volumes:
+      - ./db:/var/lib/postgresql/data
+
+  ingest:
+    build: ./ingest
+    container_name: mqtt-cits-ingest
+    restart: unless-stopped
+    depends_on: [mosquitto, db]
+    env_file: [.env, .env.db]
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+    volumes:
+      - ./archive:/archive:ro      # für --backfill
