@@ -4,6 +4,7 @@ import SwiftUI
 struct CitsToGoApp: App {
     @State private var model = BridgeModel()
     @State private var location = LocationProvider()
+    @State private var screen = ScreenAwake()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -11,8 +12,10 @@ struct CitsToGoApp: App {
             RootView()
                 .environment(model)
                 .environment(location)
+                .environment(screen)
+                .onChange(of: model.linkState) { _, s in screen.setReceiverConnected(s.isStreaming) }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase != .active { model.flushRecording() }
+                    if phase != .active { model.flushRecording() } else { screen.update() }
                 }
         }
     }

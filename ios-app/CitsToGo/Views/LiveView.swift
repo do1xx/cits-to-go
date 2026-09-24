@@ -130,7 +130,7 @@ struct EnrollmentHint: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Empfänger lehnt dieses iPhone ab", systemImage: "lock.trianglebadge.exclamationmark")
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
-            Text("Die Firmware akzeptiert neue Geräte nur nach USB-Freigabe. Empfänger an Mac/PC anschließen, `python3 tools/arm_enrollment.py` ausführen und innerhalb von 30 s hier „Verbinden“ tippen und die Kopplung bestätigen.")
+            Text("Die Firmware akzeptiert neue Geräte nur nach USB-Freigabe. Empfänger an einen Computer anschließen, auf cits.dirksreich.de „Kopplung freigeben“ klicken und innerhalb von 30 s hier „Verbinden“ tippen und die Kopplung bestätigen.")
                 .font(.caption)
         }
     }

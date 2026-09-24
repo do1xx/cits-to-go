@@ -2,10 +2,12 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(BridgeModel.self) private var model
+    @Environment(ScreenAwake.self) private var screen
     @State private var confirmForget = false
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var screen = screen
         NavigationStack {
             Form {
                 Section {
@@ -17,7 +19,19 @@ struct SettingsView: View {
                 } header: {
                     Text("Empfänger (Bluetooth LE)")
                 } footer: {
-                    Text("Erstkopplung: Empfänger per USB an Mac/PC, `python3 ios-app/tools/arm_enrollment.py` ausführen, dann innerhalb von 30 s „Verbinden“ tippen und „Koppeln“ bestätigen. Nach einem Neu-Flashen mit Löschen muss das Gerät zusätzlich unter iOS-Einstellungen › Bluetooth ignoriert werden.")
+                    Text("Erstkopplung: Empfänger per USB an einen Computer anschließen, auf cits.dirksreich.de „Kopplung freigeben“ klicken, dann innerhalb von 30 s hier „Verbinden“ tippen und „Koppeln“ bestätigen. Nach einem Neu-Flashen das Gerät vorher unter iOS-Einstellungen › Bluetooth ignorieren.")
+                }
+
+                Section {
+                    Picker("Bildschirm anlassen", selection: $screen.mode) {
+                        ForEach(KeepAwakeMode.allCases) { Text($0.label).tag($0) }
+                    }
+                    Toggle("Nur wenn Empfänger verbunden", isOn: $screen.onlyWhenConnected)
+                    LabeledContent("Jetzt", value: screen.active ? "bleibt an" : (screen.mode == .charging && !screen.isCharging ? "aus (lädt nicht)" : "normale Sperre"))
+                } header: {
+                    Text("Bildschirm")
+                } footer: {
+                    Text("Hält das Display an, solange die App geöffnet ist – wie bei Navigations-Apps. Empfang, Weiterleitung und Aufnahme laufen auch bei gesperrtem iPhone im Hintergrund weiter.")
                 }
 
                 Section {
