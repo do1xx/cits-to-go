@@ -99,6 +99,9 @@ struct StatusCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 ForwardLine(name: "OpenTrafficMap", enabled: model.mqttEnabled, state: model.mqttState, counters: model.mqttCounters)
                 ForwardLine(name: BuiltInServers.communityName, enabled: model.communityEnabled, state: model.communityState, counters: model.communityCounters)
+                if model.customEnabled {
+                    ForwardLine(name: model.customHost.isEmpty ? "Eigener Server" : model.customHost, enabled: true, state: model.customState, counters: model.customCounters)
+                }
             }
             if let url = model.recordingURL {
                 Label("Aufnahme läuft: \(url.lastPathComponent)", systemImage: "record.circle")

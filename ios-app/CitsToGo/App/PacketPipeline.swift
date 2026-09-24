@@ -36,14 +36,17 @@ final class PacketPipeline: BleTransportDelegate {
     let transport = BleTransport()
     let mqtt = MqttClient()            // OpenTrafficMap (or a user-defined broker)
     let community = MqttClient()       // built-in 1xx community broker
+    let custom = MqttClient()          // user-configured broker (address, credentials, topic prefix)
 
     private var reader = CtgStreamReader()
     private var sequence = CaptureSequenceTracker()
     private var pcap: PcapWriter?
+    private var rolling: RollingCapture?
     private var pending = PipelineDrain()
     private var nextId: UInt64 = 0
     private var mqttEnabled = false
     private var communityEnabled = false
+    private var customEnabled = false
     private var intersectionStore = IntersectionStore()
     private var intersectionsDirty = false
     private var lastIntersectionPublish = Date.distantPast
@@ -70,6 +73,7 @@ final class PacketPipeline: BleTransportDelegate {
 
     func setMqttEnabled(_ enabled: Bool) { transport.queue.async { self.mqttEnabled = enabled } }
     func setCommunityEnabled(_ enabled: Bool) { transport.queue.async { self.communityEnabled = enabled } }
+    func setCustomEnabled(_ enabled: Bool) { transport.queue.async { self.customEnabled = enabled } }
 
     /// Starts or stops PCAP recording; returns the file URL when a capture was started.
     func setRecording(_ on: Bool) -> URL? {
@@ -84,7 +88,31 @@ final class PacketPipeline: BleTransportDelegate {
         }
     }
 
-    func flushRecording() { transport.queue.async { self.pcap?.flush() } }
+    func flushRecording() { transport.queue.async { self.pcap?.flush(); self.rolling?.flush() } }
+
+    // MARK: Rolling capture
+
+    func configureRolling(enabled: Bool, retentionHours: Int) {
+        transport.queue.async {
+            if enabled {
+                if self.rolling == nil { self.rolling = RollingCapture(retentionHours: retentionHours) }
+                self.rolling?.retentionHours = retentionHours
+            } else {
+                self.rolling?.close()
+                self.rolling = nil
+            }
+        }
+    }
+
+    func rollingUsage() -> (bytes: Int64, oldest: Date?) {
+        transport.queue.sync { (rolling ?? RollingCapture(retentionHours: 24)).usage() }
+    }
+
+    func exportRolling(since: Date?) -> Result<(url: URL, packets: Int), Error> {
+        transport.queue.sync { Result { try (rolling ?? RollingCapture(retentionHours: 24)).export(since: since) } }
+    }
+
+    func deleteRolling() { transport.queue.async { (self.rolling ?? RollingCapture(retentionHours: 24)).deleteAll() } }
 
     // MARK: Demo
 
@@ -227,7 +255,9 @@ final class PacketPipeline: BleTransportDelegate {
             pending.missingSequences += sequence.observe(packet.sequence)
             if mqttEnabled { mqtt.publishPacket(packet.payload) }
             if communityEnabled { community.publishPacket(packet.payload) }
+            if customEnabled { custom.publishPacket(packet.payload) }
             pcap?.write(packet)
+            rolling?.write(packet)
         }
 
         let its: ItsPacketInfo?, note: String?

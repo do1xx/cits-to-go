@@ -21,11 +21,15 @@ final class PcapWriter {
         return dir
     }
 
-    init() throws {
+    convenience init() throws {
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd-HHmmss"
         f.locale = Locale(identifier: "en_US_POSIX")
-        url = Self.capturesDirectory.appendingPathComponent("cits-\(f.string(from: Date())).pcap")
+        try self.init(url: Self.capturesDirectory.appendingPathComponent("cits-\(f.string(from: Date())).pcap"))
+    }
+
+    init(url: URL) throws {
+        self.url = url
         FileManager.default.createFile(atPath: url.path, contents: nil)
         handle = try FileHandle(forWritingTo: url)
         var h = [UInt8]()

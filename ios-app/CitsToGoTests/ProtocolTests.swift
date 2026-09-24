@@ -188,6 +188,44 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(denm.detectionTime.timeIntervalSince1970, 1_072_915_200 + 716_993_747.244 - 5, accuracy: 0.001)
     }
 
+    /// End-to-end: custom broker with username/password and topic prefix. Needs credentials via
+    /// TEST_RUNNER_CITS_TEST_BROKER / _USER / _PASS; skipped otherwise.
+    func testCustomBrokerWithPrefixAndCredentials() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let host = env["CITS_TEST_BROKER"], let user = env["CITS_TEST_USER"], let pass = env["CITS_TEST_PASS"] else {
+            throw XCTSkip("no test broker configured")
+        }
+        let client = MqttClient()
+        let connected = expectation(description: "connected")
+        client.onStateChange = { if $0 == .connected { connected.fulfill() } }
+        client.configure(.init(uri: "mqtts://\(host):8883", nodeId: "selftest", appVersion: "test",
+                               username: user, password: pass, topicPrefix: "cits-selftest/its"))
+        wait(for: [connected], timeout: 15)
+        client.publishPacket([0x88, 0x00, 0x54, 0x45, 0x53, 0x54])
+        let deadline = Date().addingTimeInterval(5)
+        while client.counters().published < 1, Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+        XCTAssertEqual(client.counters().published, 1)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        client.configure(nil)
+    }
+
+    func testRollingCaptureExportFiltersByTime() throws {
+        let rc = RollingCapture(retentionHours: 24)
+        rc.deleteAll()
+        for i in 0..<5 {
+            rc.write(CitsPacket(sequence: UInt32(i), timestampUs: UInt64(i) * 1_000_000, frequencyMhz: 5900, rssiDbm: -60,
+                                wifiType: 0, rxState: 0, flags: 0, originalLength: 3, payload: [1, 2, UInt8(i)]))
+        }
+        let all = try rc.export(since: nil)
+        XCTAssertEqual(all.packets, 5)
+        XCTAssertThrowsError(try rc.export(since: Date().addingTimeInterval(3600)))   // nothing in the future
+        let data = [UInt8](try Data(contentsOf: all.url))
+        XCTAssertEqual(data.u32le(0), 0xA1B2_C3D4)
+        XCTAssertEqual(data.count, 24 + 5 * (16 + 3))
+        try? FileManager.default.removeItem(at: all.url)
+        rc.deleteAll()
+    }
+
     func testPcapWriterHeaderAndRecord() throws {
         let w = try PcapWriter()
         w.write(CitsPacket(sequence: 1, timestampUs: 5, frequencyMhz: 5900, rssiDbm: -60, wifiType: 0, rxState: 0,

@@ -58,6 +58,8 @@ final class BridgeModel {
     private(set) var mqttCounters: (published: UInt64, dropped: UInt64, spooled: Int) = (0, 0, 0)
     private(set) var communityState: MqttClient.State = .disabled
     private(set) var communityCounters: (published: UInt64, dropped: UInt64, spooled: Int) = (0, 0, 0)
+    private(set) var customState: MqttClient.State = .disabled
+    private(set) var customCounters: (published: UInt64, dropped: UInt64, spooled: Int) = (0, 0, 0)
     private(set) var recordingURL: URL?
     var showEnrollmentHint = false
     private(set) var eventLog: [LogEntry] = []
@@ -68,6 +70,16 @@ final class BridgeModel {
     var mqttEnabled: Bool { didSet { persist(); applyMqtt() } }
     var mqttUri: String { didSet { persist() } }
     var communityEnabled: Bool { didSet { persist(); applyMqtt() } }
+    var rollingEnabled: Bool { didSet { persist(); applyRolling() } }
+    var rollingHours: Int { didSet { persist(); applyRolling() } }
+    // User-configured extra broker; edits take effect via applyMqtt() ("Übernehmen")
+    var customEnabled: Bool { didSet { persist(); applyMqtt() } }
+    var customHost: String { didSet { persist() } }
+    var customPort: String { didSet { persist() } }
+    var customTLS: Bool { didSet { persist() } }
+    var customUser: String { didSet { persist() } }
+    var customPassword: String { didSet { Keychain.set(customPassword, for: "custom") } }
+    var customPrefix: String { didSet { persist() } }
     var nodeId: String { didSet { persist() } }
     var autoConnect: Bool { didSet { persist() } }
 
@@ -89,6 +101,15 @@ final class BridgeModel {
         mqttEnabled = d.bool(forKey: "mqtt.enabled")
         mqttUri = d.string(forKey: "mqtt.uri") ?? Self.defaultMqttUri
         communityEnabled = d.object(forKey: "mqtt.community.enabled") as? Bool ?? true
+        customEnabled = d.bool(forKey: "mqtt.custom.enabled")
+        rollingEnabled = d.object(forKey: "rolling.enabled") as? Bool ?? true
+        rollingHours = d.object(forKey: "rolling.hours") as? Int ?? 24
+        customHost = d.string(forKey: "mqtt.custom.host") ?? ""
+        customPort = d.string(forKey: "mqtt.custom.port") ?? "8883"
+        customTLS = d.object(forKey: "mqtt.custom.tls") as? Bool ?? true
+        customUser = d.string(forKey: "mqtt.custom.user") ?? ""
+        customPassword = Keychain.get("custom") ?? ""
+        customPrefix = d.string(forKey: "mqtt.custom.prefix") ?? "its/"
         autoConnect = d.object(forKey: "ble.autoConnect") as? Bool ?? true
         if let id = d.string(forKey: "node.id"), !id.isEmpty {
             nodeId = id
@@ -105,6 +126,12 @@ final class BridgeModel {
                 self?.record("MQTT: \(s.label)")
             }
         }
+        pipeline.custom.onStateChange = { [weak self] s in
+            Task { @MainActor in
+                self?.customState = s
+                self?.record("Eigener Server: \(s.label)")
+            }
+        }
         pipeline.community.onStateChange = { [weak self] s in
             Task { @MainActor in
                 self?.communityState = s
@@ -113,6 +140,7 @@ final class BridgeModel {
         }
         record("App gestartet (Version \(appVersion), OpenTrafficMap \(mqttEnabled ? "an" : "aus"), \(BuiltInServers.communityName) \(communityEnabled ? "an" : "aus"), Node \(nodeId))")
         applyMqtt()
+        applyRolling()
         if autoConnect { pipeline.transport.start() }
         if ProcessInfo.processInfo.arguments.contains("-demo") { toggleDemo() }
         let args = ProcessInfo.processInfo.arguments
@@ -143,6 +171,30 @@ final class BridgeModel {
         pipeline.mqtt.configure(mqttEnabled ? .init(uri: mqttUri, nodeId: nodeId, appVersion: appVersion) : nil)
         pipeline.setCommunityEnabled(communityEnabled)
         pipeline.community.configure(communityEnabled ? .init(uri: BuiltInServers.communityUri, nodeId: nodeId, appVersion: appVersion) : nil)
+        let host = customHost.trimmingCharacters(in: .whitespaces)
+        let customOn = customEnabled && !host.isEmpty
+        pipeline.setCustomEnabled(customOn)
+        pipeline.custom.configure(customOn ? .init(
+            uri: "\(customTLS ? "mqtts" : "mqtt")://\(host):\(Int(customPort) ?? (customTLS ? 8883 : 1883))",
+            nodeId: nodeId, appVersion: appVersion,
+            username: customUser.isEmpty ? nil : customUser, password: customPassword,
+            topicPrefix: customPrefix.isEmpty ? "its/" : customPrefix) : nil)
+    }
+
+    func applyRolling() { pipeline.configureRolling(enabled: rollingEnabled, retentionHours: rollingHours) }
+    func rollingUsage() -> (bytes: Int64, oldest: Date?) { pipeline.rollingUsage() }
+    func deleteRolling() { pipeline.deleteRolling(); record("Automatischer Mitschnitt gelöscht") }
+
+    /// Exports the rolling capture since `since` (nil = all) into the captures folder.
+    func exportRolling(since: Date?) -> URL? {
+        switch pipeline.exportRolling(since: since) {
+        case .success(let r):
+            record("Mitschnitt exportiert: \(r.url.lastPathComponent) (\(r.packets) Pakete)")
+            return r.url
+        case .failure:
+            record("Mitschnitt-Export: keine Pakete im gewählten Zeitraum")
+            return nil
+        }
     }
 
     func toggleRecording() {
@@ -216,9 +268,10 @@ final class BridgeModel {
         if let e = d.lastError { lastError = e }
         mqttCounters = pipeline.mqtt.counters()
         communityCounters = pipeline.community.counters()
+        customCounters = pipeline.custom.counters()
         if now.timeIntervalSince(lastSummary) >= 60 {
             lastSummary = now
-            record("Minute: \(totalPackets) Pakete gesamt, \(String(format: "%.1f", packetsPerSecond))/s · BLE \(linkState.label) · OTM \(mqttState.label), \(mqttCounters.published) gesendet, \(mqttCounters.spooled) wartend · 1xx \(communityState.label), \(communityCounters.published) gesendet, \(communityCounters.spooled) wartend")
+            record("Minute: \(totalPackets) Pakete gesamt, \(String(format: "%.1f", packetsPerSecond))/s · BLE \(linkState.label) · OTM \(mqttState.label), \(mqttCounters.published) gesendet, \(mqttCounters.spooled) wartend · 1xx \(communityState.label), \(communityCounters.published) gesendet, \(communityCounters.spooled) wartend · eigener \(customState.label), \(customCounters.published) gesendet")
         }
 
         rateWindow.append((now, d.records.count))
@@ -273,6 +326,14 @@ final class BridgeModel {
         d.set(mqttEnabled, forKey: "mqtt.enabled")
         d.set(mqttUri, forKey: "mqtt.uri")
         d.set(communityEnabled, forKey: "mqtt.community.enabled")
+        d.set(rollingEnabled, forKey: "rolling.enabled")
+        d.set(rollingHours, forKey: "rolling.hours")
+        d.set(customEnabled, forKey: "mqtt.custom.enabled")
+        d.set(customHost, forKey: "mqtt.custom.host")
+        d.set(customPort, forKey: "mqtt.custom.port")
+        d.set(customTLS, forKey: "mqtt.custom.tls")
+        d.set(customUser, forKey: "mqtt.custom.user")
+        d.set(customPrefix, forKey: "mqtt.custom.prefix")
         d.set(nodeId, forKey: "node.id")
         d.set(autoConnect, forKey: "ble.autoConnect")
     }

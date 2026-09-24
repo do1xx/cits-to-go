@@ -45,6 +45,28 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("An eigenen Server senden", isOn: $model.customEnabled)
+                    TextField("Adresse, z. B. mqtt.example.org", text: $model.customHost)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                    HStack {
+                        TextField("Port", text: $model.customPort).keyboardType(.numberPad).frame(maxWidth: 90)
+                        Toggle("TLS (verschlüsselt)", isOn: $model.customTLS)
+                    }
+                    TextField("Benutzer (optional)", text: $model.customUser)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().textContentType(.username)
+                    SecureField("Passwort (optional)", text: $model.customPassword).textContentType(.password)
+                    TextField("Topic-Präfix, z. B. its/", text: $model.customPrefix)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    Button("Übernehmen & neu verbinden") { model.applyMqtt() }
+                    LabeledContent("Status", value: model.customEnabled ? model.customState.label : "Aus")
+                    LabeledContent("Gesendet / verworfen", value: "\(model.customCounters.published) / \(model.customCounters.dropped)")
+                } header: {
+                    Text("Eigener Server")
+                } footer: {
+                    Text("Beispiel: Präfix „opentrafficmap/its/“ ergibt \(model.customPrefix.isEmpty ? "its/" : model.customPrefix)\(model.nodeId)/packet. Das Passwort wird im iOS-Schlüsselbund gespeichert.")
+                }
+
+                Section {
                     Toggle("An MQTT weiterleiten", isOn: $model.mqttEnabled)
                     TextField("mqtts://user:pass@host:8883", text: $model.mqttUri)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
@@ -55,7 +77,7 @@ struct SettingsView: View {
                     LabeledContent("Gesendet / verworfen", value: "\(model.mqttCounters.published) / \(model.mqttCounters.dropped)")
                     Button("OpenTrafficMap-Standard") { model.mqttUri = BridgeModel.defaultMqttUri }
                 } header: {
-                    Text("OpenTrafficMap / eigener Broker")
+                    Text("OpenTrafficMap")
                 } footer: {
                     Text("Topics wie beim OpenTrafficMap-Empfänger: its/\(model.nodeId)/packet (rohe 802.11-Frames), …/status, …/info, …/stats. Offline werden bis zu \(MqttClient.maxSpool) Pakete zwischengespeichert.")
                 }

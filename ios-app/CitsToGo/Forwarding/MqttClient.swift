@@ -25,6 +25,11 @@ final class MqttClient {
         var nodeId: String
         var appVersion: String
         var hardware = "ios-ble-bridge"
+        /// Overrides credentials embedded in the URI when set.
+        var username: String? = nil
+        var password: String? = nil
+        /// Topic root before the node ID, e.g. "its/" or "opentrafficmap/its/".
+        var topicPrefix = "its/"
     }
 
     static let keepAliveSeconds: UInt16 = 60
@@ -82,12 +87,16 @@ final class MqttClient {
 
     private func topic(_ leaf: String) -> String? {
         guard let node = config?.nodeId.trimmingCharacters(in: .whitespaces), !node.isEmpty else { return nil }
-        return "its/\(node)/\(leaf)"
+        var prefix = config?.topicPrefix.trimmingCharacters(in: .whitespaces) ?? "its/"
+        if prefix.hasPrefix("/") { prefix.removeFirst() }
+        if !prefix.isEmpty, !prefix.hasSuffix("/") { prefix += "/" }
+        return "\(prefix)\(node)/\(leaf)"
     }
 
     private func open() {
         guard let config else { return }
-        guard let target = Self.parse(config.uri) else { state = .offline("ungültige URI"); return }
+        guard var target = Self.parse(config.uri) else { state = .offline("ungültige Adresse"); return }
+        if let u = config.username, !u.isEmpty { target.username = u; target.password = config.password ?? "" }
         generation += 1
         let gen = generation
         state = .connecting
@@ -180,7 +189,7 @@ final class MqttClient {
         state = .connected
         guard let config, let status = topic("status"), let info = topic("info"), let packet = topic("packet") else { return }
         send(Self.publishPacket(topic: status, payload: Array("online".utf8), retain: true))
-        send(Self.publishPacket(topic: info, payload: Self.infoPayload(config), retain: false))
+        send(Self.publishPacket(topic: info, payload: Self.infoPayload(config), retain: true))
         sendStats()
         let backlog = spool
         spool.removeAll()
