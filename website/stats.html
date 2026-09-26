@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CITS-to-go – Statistik</title>
+<meta name="description" content="Auswertung aller Empfänger: Nachrichten pro Stunde, Nachrichtentypen, Empfänger und Warnungen der letzten sieben Tage.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1f2428; --muted: #5d6770; --rule: #dfe3e6; --bg: #ffffff; --tint: #f4f6f7;
+    --accent: #0b4f8a; --red: #c4231c; --green: #1c8a43; --bar: #256abf; --bar-hover: #104281;
+    --mono: "Overpass Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1rem; line-height: 1.5; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); text-underline-offset: 0.18em; }
+  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; }
+  .topbar { border-bottom: 1px solid var(--rule); }
+  .topbar .inner { max-width: 84rem; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; align-items: center; gap: 1.5rem; }
+  .logo { display: flex; align-items: center; gap: 0.55rem; white-space: nowrap; font-weight: 800; color: var(--ink); text-decoration: none; }
+  .logo img { width: 1.7rem; height: 1.7rem; border-radius: 0.4rem; }
+  .topbar nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.3rem 1.25rem; font-size: 0.95rem; }
+  .topbar nav a { color: var(--muted); text-decoration: none; }
+  .topbar nav a[aria-current] { color: var(--ink); font-weight: 700; }
+
+  main { max-width: 84rem; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+  h1 { font-size: 1.9rem; font-weight: 800; margin: 0 0 0.25rem; }
+  h2 { font-size: 1.15rem; font-weight: 800; margin: 0 0 0.6rem; }
+  .lead { color: var(--muted); margin: 0 0 1.5rem; max-width: 50rem; }
+  section { margin-top: 2.25rem; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 0; }
+  .kpi { border-left: 3px solid var(--accent); padding: 0.2rem 0 0.2rem 0.9rem; }
+  .kpi dd { margin: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi dt { color: var(--muted); font-size: 0.93rem; }
+
+  .chart-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1rem; }
+  .chart-head h2 { margin: 0; }
+  .toggle { margin-left: auto; font: inherit; font-size: 0.9rem; color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 0.35rem; padding: 0.15rem 0.6rem; cursor: pointer; }
+  .chart { position: relative; margin-top: 0.75rem; }
+  .chart svg { display: block; width: 100%; height: 15rem; overflow: visible; }
+  .chart .grid line { stroke: var(--rule); stroke-width: 1; }
+  .chart .axis text { fill: var(--muted); font-size: 12px; font-family: "Overpass", system-ui, sans-serif; }
+  .chart .hit rect { fill: transparent; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; font-size: 0.85rem; padding: 0.3rem 0.55rem; border-radius: 0.35rem; white-space: nowrap; transform: translate(-50%, -110%); display: none; }
+  .tip b { font-variant-numeric: tabular-nums; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+  th, td { text-align: left; padding: 0.45rem 0.8rem 0.45rem 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 700; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .mono { font-family: var(--mono); font-size: 0.88em; }
+  .muted { color: var(--muted); }
+  .online { color: var(--green); font-weight: 700; }
+  .share { width: 40%; }
+  .share span { display: block; height: 0.6rem; background: var(--bar); border-radius: 0 3px 3px 0; min-width: 2px; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
+  .warn { color: var(--red); font-weight: 700; }
+  .empty, .error { color: var(--muted); padding: 0.75rem 0; }
+  .error { color: var(--red); }
+  .note { color: var(--muted); font-size: 0.9rem; margin-top: 2.5rem; max-width: 50rem; }
+  @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="inner">
+    <a class="logo" href="./"><img src="img/icon.png" alt="">CITS-to-go</a>
+    <nav>
+      <a href="./">Dokumentation</a>
+      <a href="live.html">Live</a>
+      <a href="stats.html" aria-current="page">Statistik</a>
+      <a href="coverage.html">Empfangskarte</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Statistik</h1>
+  <p class="lead">Was alle Empfänger zusammen in den letzten sieben Tagen an den Server geschickt haben. Die Zahlen werden jede Minute neu berechnet.</p>
+
+  <dl class="kpis" id="kpis">
+    <div class="kpi"><dd id="k-packets">–</dd><dt>Nachrichten in 24 h</dt></div>
+    <div class="kpi"><dd id="k-stations">–</dd><dt>verschiedene Sender in 24 h</dt></div>
+    <div class="kpi"><dd id="k-receivers">–</dd><dt>aktive Empfänger in 24 h</dt></div>
+    <div class="kpi"><dd id="k-warnings">–</dd><dt>Warnungen (DENM) in 7 Tagen</dt></div>
+  </dl>
+
+  <section>
+    <div class="chart-head">
+      <h2>Nachrichten pro Stunde</h2>
+      <span class="muted" id="range"></span>
+      <button class="toggle" id="toggle" aria-pressed="false">Als Tabelle</button>
+    </div>
+    <div class="chart" id="chart">
+      <svg id="svg" role="img" aria-label="Säulendiagramm: empfangene Nachrichten pro Stunde, letzte sieben Tage"></svg>
+      <div class="tip" id="tip"></div>
+    </div>
+    <div class="scroll" id="hour-table" hidden></div>
+  </section>
+
+  <section class="two">
+    <div>
+      <h2>Nachrichtentypen</h2>
+      <div id="types"><p class="empty">Lade …</p></div>
+    </div>
+    <div>
+      <h2>Empfänger</h2>
+      <div class="scroll" id="receivers"><p class="empty">Lade …</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Warnungen der letzten sieben Tage</h2>
+    <div class="scroll" id="warnings"><p class="empty">Lade …</p></div>
+  </section>
+
+  <p class="note">Eine Warnung wird einmal gezählt, auch wenn sie von mehreren Empfängern oder wiederholt empfangen wurde. Die Orte der Sender zeigt die <a href="coverage.html">Empfangskarte</a>.</p>
+</main>
+
+<script>
+const fmt = new Intl.NumberFormat("de-DE");
+const dayFmt = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "numeric" });
+const timeFmt = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const HOUR = 3600e3;
+
+function ago(date) {
+  const s = (Date.now() - date) / 1000;
+  if (s < 90) return "gerade eben";
+  if (s < 5400) return `vor ${Math.round(s / 60)} min`;
+  if (s < 129600) return `vor ${Math.round(s / 3600)} h`;
+  return `vor ${Math.round(s / 86400)} Tagen`;
+}
+
+// Fill hours without packets with zero so gaps show as gaps, not as squeezed time.
+function hourSeries(rows) {
+  const counts = new Map(rows.map(r => [new Date(r.hour).getTime(), r.packets]));
+  const end = Math.floor(Date.now() / HOUR) * HOUR;
+  const out = [];
+  for (let t = end - 167 * HOUR; t <= end; t += HOUR) out.push({ t, n: counts.get(t) || 0 });
+  return out;
+}
+
+function niceMax(v) {
+  if (v <= 5) return 5;
+  const p = 10 ** Math.floor(Math.log10(v));
+  return [1, 2, 2.5, 5, 10].map(m => m * p).find(m => m >= v);
+}
+
+function drawChart(series) {
+  const svg = document.getElementById("svg");
+  const W = svg.clientWidth, H = svg.clientHeight, left = 44, bottom = 22, top = 6;
+  const plotW = W - left, plotH = H - bottom - top;
+  const max = niceMax(Math.max(...series.map(d => d.n)));
+  const step = plotW / series.length, gap = step > 5 ? 1 : 0.5, bw = Math.max(1, step - gap);
+  const y = v => top + plotH - (v / max) * plotH;
+  let grid = "", axis = "", bars = "", hit = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = (max / 4) * i;
+    grid += `<line x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/>`;
+    axis += `<text x="${left - 8}" y="${y(v) + 4}" text-anchor="end">${fmt.format(v)}</text>`;
+  }
+  series.forEach((d, i) => {
+    const x = left + i * step;
+    const date = new Date(d.t);
+    if (date.getHours() === 0) axis += `<text x="${x}" y="${H - 4}">${dayFmt.format(date)}</text>`;
+    if (d.n > 0) {
+      const h = Math.max(2, plotH - (y(d.n) - top));
+      const r = Math.min(2, bw / 2);
+      const bx = x + gap / 2, by = top + plotH - h;
+      bars += `<path data-i="${i}" d="M${bx},${top + plotH}V${by + r}Q${bx},${by} ${bx + r},${by}H${bx + bw - r}Q${bx + bw},${by} ${bx + bw},${by + r}V${top + plotH}Z"/>`;
+    }
+    hit += `<rect data-i="${i}" x="${x}" y="${top}" width="${step}" height="${plotH}"/>`;
+  });
+  svg.innerHTML = `<g class="grid">${grid}</g><g class="axis">${axis}</g><g class="bars" fill="var(--bar)">${bars}</g><g class="hit">${hit}</g>`;
+
+  const tip = document.getElementById("tip");
+  const chart = document.getElementById("chart");
+  svg.querySelector(".hit").onmousemove = e => {
+    const i = +e.target.dataset.i;
+    if (Number.isNaN(i)) return;
+    const d = series[i];
+    svg.querySelectorAll(".bars path").forEach(p => p.style.fill = +p.dataset.i === i ? "var(--bar-hover)" : "var(--bar)");
+    tip.innerHTML = `${timeFmt.format(new Date(d.t))} Uhr<br><b>${fmt.format(d.n)}</b> Nachrichten`;
+    const box = chart.getBoundingClientRect();
+    tip.style.left = Math.min(Math.max(e.clientX - box.left, 80), box.width - 80) + "px";
+    tip.style.top = Math.min(y(d.n), top + plotH - 10) + "px";
+    tip.style.display = "block";
+  };
+  svg.querySelector(".hit").onmouseleave = () => {
+    tip.style.display = "none";
+    };
+
+  document.getElementById("range").textContent =
+    `${dayFmt.format(new Date(series[0].t))} bis heute, Höchstwert ${fmt.format(Math.max(...series.map(d => d.n)))} pro Stunde`;
+  document.getElementById("hour-table").innerHTML = `<table><thead><tr><th>Stunde</th><th class="num">Nachrichten</th></tr></thead><tbody>${
+    series.filter(d => d.n > 0).reverse().map(d => `<tr><td>${timeFmt.format(new Date(d.t))} Uhr</td><td class="num">${fmt.format(d.n)}</td></tr>`).join("")
+  }</tbody></table>`;
+}
+
+function render(data) {
+  const t = data.totals;
+  document.getElementById("k-packets").textContent = fmt.format(t.packets_24h);
+  document.getElementById("k-stations").textContent = fmt.format(t.stations_24h);
+  document.getElementById("k-receivers").textContent = fmt.format(t.receivers_24h);
+  document.getElementById("k-warnings").textContent = fmt.format(t.warnings_7d);
+
+  const series = hourSeries(data.hourly);
+  drawChart(series);
+  window.onresize = () => drawChart(series);
+
+  const total7 = data.types.reduce((s, r) => s + r.last_7d, 0) || 1;
+  document.getElementById("types").innerHTML = data.types.length ? `<table><thead><tr><th>Typ</th><th class="num">24 h</th><th class="num">7 Tage</th><th class="share">Anteil 7 Tage</th></tr></thead><tbody>${
+    data.types.map(r => `<tr><td><b>${esc(r.type)}</b></td><td class="num">${fmt.format(r.last_24h)}</td><td class="num">${fmt.format(r.last_7d)}</td>
+      <td class="share" title="${(100 * r.last_7d / total7).toFixed(1)} %"><span style="width:${(100 * r.last_7d / total7).toFixed(1)}%"></span></td></tr>`).join("")
+  }</tbody></table>` : `<p class="empty">Noch keine Nachrichten.</p>`;
+
+  document.getElementById("receivers").innerHTML = `<table><thead><tr><th>Empfänger</th><th>Art</th><th>Zuletzt</th><th class="num">24 h</th></tr></thead><tbody>${
+    data.receivers.map(r => `<tr><td>${r.name ? esc(r.name) + ` <span class="mono muted">${esc(r.node)}</span>` : `<span class="mono">${esc(r.node)}</span>`}</td>
+      <td class="muted">${r.hardware === "ios-ble-bridge" ? "iPhone (mobil)" : r.hardware === "cits-to-go-usb" ? "fest (USB)" : esc(r.hardware || "–")}</td>
+      <td>${r.status === "online" ? `<span class="online">online</span>` : r.last_packet ? ago(new Date(r.last_packet)) : `<span class="muted">nie</span>`}</td>
+      <td class="num">${fmt.format(r.packets_24h)}</td></tr>`).join("")
+  }</tbody></table>`;
+
+  document.getElementById("warnings").innerHTML = data.warnings.length ? `<table><thead><tr><th>Ereignis</th><th>Erkannt</th><th class="num">Gültig</th><th>Ort</th><th>Empfangen von</th></tr></thead><tbody>${
+    data.warnings.map(w => `<tr><td class="warn">⚠ ${esc(w.cause)}</td><td>${w.denm_detection ? timeFmt.format(new Date(w.denm_detection)) + " Uhr" : "–"}</td>
+      <td class="num">${w.denm_validity} s</td>
+      <td>${w.event_lat != null ? `<a href="coverage.html#${w.event_lat},${w.event_lon},15">${w.event_lat.toFixed(4)}, ${w.event_lon.toFixed(4)}</a>` : "–"}</td>
+      <td class="mono">${esc(w.node)}</td></tr>`).join("")
+  }</tbody></table>` : `<p class="empty">In den letzten sieben Tagen wurde keine Warnung empfangen.</p>`;
+}
+
+document.getElementById("toggle").onclick = e => {
+  const table = e.target.getAttribute("aria-pressed") !== "true";
+  e.target.setAttribute("aria-pressed", table);
+  e.target.textContent = table ? "Als Diagramm" : "Als Tabelle";
+  document.getElementById("chart").hidden = table;
+  document.getElementById("hour-table").hidden = !table;
+};
+
+async function load() {
+  try {
+    const res = await fetch("api/stats");
+    if (!res.ok) throw new Error(`Server antwortet mit ${res.status}`);
+    render(await res.json());
+  } catch (err) {
+    document.getElementById("types").innerHTML = `<p class="error">Die Statistik konnte nicht geladen werden (${esc(err.message)}). Die Seite versucht es in einer Minute erneut.</p>`;
+  }
+}
+load();
+setInterval(load, 60e3);
+</script>
+</body>
+</html>

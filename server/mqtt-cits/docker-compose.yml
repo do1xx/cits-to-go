@@ -51,3 +51,13 @@ services:
       MQTT_PORT: "1883"
     volumes:
       - ./archive:/archive:ro      # für --backfill
+
+  api:
+    build: ./ingest
+    container_name: mqtt-cits-api
+    restart: unless-stopped
+    depends_on: [db]
+    env_file: .env.db
+    command: ["python", "-u", "api.py"]
+    ports:
+      - "127.0.0.1:8095:8095"     # nginx: https://cits.dirksreich.de/api/

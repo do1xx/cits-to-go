@@ -8,6 +8,11 @@ server {
     location / {
         try_files $uri $uri/ =404;
     }
+    # Lese-API (Statistik, Abdeckung) aus der TimescaleDB, Container mqtt-cits-api
+    location /api/ {
+        proxy_pass http://127.0.0.1:8095/;
+        proxy_set_header Host $host;
+    }
     location /firmware/ {
         add_header Cache-Control "no-cache";
         types { application/octet-stream bin; application/json json; }

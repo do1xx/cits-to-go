@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CITS-to-go – Empfangskarte</title>
+<meta name="description" content="Wo die CITS-to-go-Empfänger C-ITS-Nachrichten gehört haben: Positionen der Sender, zusammengefasst in Rasterzellen von etwa 100 Metern.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #1f2428; --muted: #5d6770; --rule: #dfe3e6; --bg: #ffffff; --tint: #f4f6f7;
+    --accent: #0b4f8a; --red: #c4231c;
+    --s1: #86b6ef; --s2: #5598e7; --s3: #2a78d6; --s4: #1c5cab; --s5: #104281;
+    --mono: "Overpass Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1rem; line-height: 1.5; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); text-underline-offset: 0.18em; }
+  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; }
+  .topbar { border-bottom: 1px solid var(--rule); }
+  .topbar .inner { max-width: 84rem; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; align-items: center; gap: 1.5rem; }
+  .logo { display: flex; align-items: center; gap: 0.55rem; white-space: nowrap; font-weight: 800; color: var(--ink); text-decoration: none; }
+  .logo img { width: 1.7rem; height: 1.7rem; border-radius: 0.4rem; }
+  .topbar nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.3rem 1.25rem; font-size: 0.95rem; }
+  .topbar nav a { color: var(--muted); text-decoration: none; }
+  .topbar nav a[aria-current] { color: var(--ink); font-weight: 700; }
+
+  main { max-width: 84rem; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+  h1 { font-size: 1.9rem; font-weight: 800; margin: 0 0 0.25rem; }
+  .lead { color: var(--muted); margin: 0 0 1.25rem; max-width: 50rem; }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; margin-bottom: 0.75rem; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 0.4rem; overflow: hidden; }
+  .seg button { font: inherit; font-size: 0.92rem; padding: 0.25rem 0.8rem; border: 0; background: var(--bg); color: var(--ink); cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 700; }
+  .summary { color: var(--muted); font-size: 0.95rem; }
+  .summary b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .toggle { margin-left: auto; font: inherit; font-size: 0.9rem; color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 0.35rem; padding: 0.15rem 0.6rem; cursor: pointer; }
+
+  #map { height: 36rem; border: 1px solid var(--rule); border-radius: 0.5rem; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; margin-top: 0.6rem; font-size: 0.9rem; color: var(--muted); }
+  .legend .key { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .legend i { width: 1.1rem; height: 0.8rem; border-radius: 2px; display: inline-block; }
+  .legend .denm { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--red); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--red); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+  th, td { text-align: left; padding: 0.45rem 0.8rem 0.45rem 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 700; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; max-height: 36rem; }
+  .empty, .error { color: var(--muted); padding: 0.75rem 0; }
+  .error { color: var(--red); }
+  .note { color: var(--muted); font-size: 0.9rem; margin-top: 2rem; max-width: 50rem; }
+  .leaflet-tooltip { font-family: "Overpass", system-ui, sans-serif; font-size: 0.85rem; }
+  @media (max-width: 700px) { #map { height: 26rem; } .toggle { margin-left: 0; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="inner">
+    <a class="logo" href="./"><img src="img/icon.png" alt="">CITS-to-go</a>
+    <nav>
+      <a href="./">Dokumentation</a>
+      <a href="live.html">Live</a>
+      <a href="stats.html">Statistik</a>
+      <a href="coverage.html" aria-current="page">Empfangskarte</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Empfangskarte</h1>
+  <p class="lead">Wo Fahrzeuge und Ampeln gesendet haben, die ein CITS-to-go-Empfänger gehört hat. Jede Zelle fasst etwa 100 × 70 Meter zusammen, je dunkler, desto mehr Nachrichten.</p>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Zeitraum">
+      <button data-days="1" aria-pressed="false">24 Stunden</button>
+      <button data-days="7" aria-pressed="true">7 Tage</button>
+      <button data-days="30" aria-pressed="false">30 Tage</button>
+      <button data-days="90" aria-pressed="false">90 Tage</button>
+    </div>
+    <span class="summary" id="summary">Lade …</span>
+    <button class="toggle" id="toggle" aria-pressed="false">Als Tabelle</button>
+  </div>
+
+  <div id="map-wrap">
+    <div id="map" role="region" aria-label="Karte der Empfangsorte"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+  <div class="scroll" id="table" hidden></div>
+
+  <p class="note">Gezeigt wird die Position, die der Sender selbst in seiner Nachricht angibt. Die Standorte der Empfänger werden nicht angezeigt. Die roten Punkte sind Warnungen (DENM) der letzten sieben Tage, Details stehen in der <a href="stats.html">Statistik</a>.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const fmt = new Intl.NumberFormat("de-DE");
+const timeFmt = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const BINS = [
+  { min: 500, color: css("--s5"), label: "ab 500" },
+  { min: 100, color: css("--s4"), label: "100–499" },
+  { min: 20, color: css("--s3"), label: "20–99" },
+  { min: 5, color: css("--s2"), label: "5–19" },
+  { min: 1, color: css("--s1"), label: "1–4" },
+];
+const binFor = n => BINS.find(b => n >= b.min);
+const HALF = 0.0005;   // API rounds positions to 0.001°
+
+document.getElementById("legend").innerHTML = "<span>Nachrichten pro Zelle:</span>" +
+  [...BINS].reverse().map(b => `<span class="key"><i style="background:${b.color}"></i>${b.label}</span>`).join("") +
+  `<span class="key"><i class="denm"></i>Warnung</span>`;
+
+const map = L.map("map").setView([53.55, 10.0], 9);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+}).addTo(map);
+const cellLayer = L.layerGroup().addTo(map);
+const warnLayer = L.layerGroup().addTo(map);
+const hashView = location.hash.slice(1).split(",").map(Number);
+let fitted = hashView.length === 3 && hashView.every(Number.isFinite);
+if (fitted) map.setView([hashView[0], hashView[1]], hashView[2]);
+
+let days = 7;
+let lastCells = [];
+
+// Real ~100 m cells when zoomed in; below zoom 15 they would be sub-pixel, so draw fixed-size dots.
+function drawCells() {
+  cellLayer.clearLayers();
+  const real = map.getZoom() >= 15;
+  for (const c of lastCells) {
+    const style = { stroke: true, color: "#ffffff", weight: 1, opacity: 0.8, fillColor: binFor(c.n).color, fillOpacity: 0.85 };
+    const shape = real
+      ? L.rectangle([[c.lat - HALF, c.lon - HALF], [c.lat + HALF, c.lon + HALF]], style)
+      : L.circleMarker([c.lat, c.lon], { ...style, radius: 6 });
+    shape.bindTooltip(`<b>${fmt.format(c.n)}</b> Nachrichten<br>von ${fmt.format(c.stations)} ${c.stations === 1 ? "Sender" : "Sendern"}`, { sticky: true })
+      .addTo(cellLayer);
+  }
+}
+map.on("zoomend", drawCells);
+
+async function load() {
+  const summary = document.getElementById("summary");
+  summary.textContent = "Lade …";
+  try {
+    const [cov, stats] = await Promise.all([
+      fetch(`api/coverage?days=${days}`).then(r => { if (!r.ok) throw new Error(`Server antwortet mit ${r.status}`); return r.json(); }),
+      fetch("api/stats").then(r => r.ok ? r.json() : { warnings: [] }),
+    ]);
+    const cells = cov.cells.sort((a, b) => a.n - b.n);   // dark cells drawn last, on top
+    lastCells = cells;
+    drawCells();
+    warnLayer.clearLayers();
+    for (const w of stats.warnings.filter(w => w.event_lat != null)) {
+      L.circleMarker([w.event_lat, w.event_lon], { radius: 6, color: "#ffffff", weight: 2, fillColor: css("--red"), fillOpacity: 1 })
+        .bindTooltip(`<b>${esc(w.cause)}</b><br>${w.denm_detection ? timeFmt.format(new Date(w.denm_detection)) + " Uhr" : ""}`)
+        .addTo(warnLayer);
+    }
+    const total = cells.reduce((s, c) => s + c.n, 0);
+    summary.innerHTML = cells.length
+      ? `<b>${fmt.format(total)}</b> Nachrichten mit Position in <b>${fmt.format(cells.length)}</b> Zellen`
+      : "In diesem Zeitraum wurden keine Nachrichten mit Position empfangen.";
+    if (!fitted && cells.length) {
+      map.fitBounds(L.latLngBounds(cells.map(c => [c.lat, c.lon])).pad(0.1));
+      fitted = true;
+    }
+    document.getElementById("table").innerHTML = `<table><thead><tr><th>Zelle (Mitte)</th><th class="num">Nachrichten</th><th class="num">Sender</th></tr></thead><tbody>${
+      [...cells].reverse().slice(0, 500).map(c => `<tr><td>${c.lat.toFixed(3)}, ${c.lon.toFixed(3)}</td><td class="num">${fmt.format(c.n)}</td><td class="num">${fmt.format(c.stations)}</td></tr>`).join("")
+    }</tbody></table>`;
+  } catch (err) {
+    summary.innerHTML = `<span class="error">Die Karte konnte nicht geladen werden (${esc(err.message)}).</span>`;
+  }
+}
+
+document.querySelectorAll(".seg button").forEach(btn => btn.onclick = () => {
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b === btn));
+  days = +btn.dataset.days;
+  load();
+});
+document.getElementById("toggle").onclick = e => {
+  const table = e.target.getAttribute("aria-pressed") !== "true";
+  e.target.setAttribute("aria-pressed", table);
+  e.target.textContent = table ? "Als Karte" : "Als Tabelle";
+  document.getElementById("map-wrap").hidden = table;
+  document.getElementById("table").hidden = !table;
+  if (!table) map.invalidateSize();
+};
+load();
+</script>
+</body>
+</html>
