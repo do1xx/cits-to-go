@@ -5,6 +5,7 @@ struct CitsToGoApp: App {
     @State private var model = BridgeModel()
     @State private var location = LocationProvider()
     @State private var screen = ScreenAwake()
+    @State private var sender = CamSender()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -13,9 +14,11 @@ struct CitsToGoApp: App {
                 .environment(model)
                 .environment(location)
                 .environment(screen)
+                .environment(sender)
+                .onAppear { sender.attach(model: model, location: location) }
                 .onChange(of: model.linkState) { _, s in screen.setReceiverConnected(s.isStreaming) }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase != .active { model.flushRecording() } else { screen.update() }
+                    if phase != .active { model.flushRecording(); sender.stop(reason: "gestoppt (App im Hintergrund)") } else { screen.update() }
                 }
         }
     }

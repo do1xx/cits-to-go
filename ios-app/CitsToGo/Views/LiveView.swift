@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LiveView: View {
     @Environment(BridgeModel.self) private var model
+    @Environment(CamSender.self) private var sender
     @State private var filter: String?
 
     private var filtered: [PacketRecord] {
@@ -12,6 +13,22 @@ struct LiveView: View {
     var body: some View {
         NavigationStack {
             List {
+                if sender.active {
+                    Section {
+                        HStack {
+                            Image(systemName: "dot.radiowaves.left.and.right").symbolEffect(.pulse)
+                            VStack(alignment: .leading) {
+                                Text("SENDET als \(sender.stationType.label)").font(.subheadline.weight(.bold))
+                                Text(sender.waitingForGps ? "warte auf GPS…" : "\(sender.sent) CAMs, \(sender.confirmed) bestätigt")
+                                    .font(.caption)
+                            }
+                            Spacer()
+                            Button("Stopp") { sender.stop() }.buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.red)
+                        }
+                        .foregroundStyle(.white)
+                        .listRowBackground(Color.red)
+                    }
+                }
                 Section {
                     StatusCard()
                 }

@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import CitsToGo
 
 final class ProtocolTests: XCTestCase {
@@ -224,6 +225,30 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(data.count, 24 + 5 * (16 + 3))
         try? FileManager.default.removeItem(at: all.url)
         rc.deleteAll()
+    }
+
+    /// CAM TX encoder round trip through our own decoder (Wireshark validation: tools/validate-cam-tx/run.sh).
+    func testCamEncoderRoundTrip() throws {
+        let id = CamIdentity.random()
+        XCTAssertEqual(id.mac[0] & 0x03, 0x02)                      // locally administered, unicast
+        let loc = CLLocation(coordinate: .init(latitude: 53.5696, longitude: 9.9624), altitude: 12, horizontalAccuracy: 3,
+                             verticalAccuracy: 4, course: 90, courseAccuracy: 2, speed: 5, speedAccuracy: 0.3, timestamp: Date())
+        for type in CamSender.selectableTypes {
+            let frame = CamEncoder.camFrame(identity: id, stationType: type, position: CamPosition(location: loc), now: Date())
+            guard case .success(let its) = ItsFrameExtractor.extract(frame) else { return XCTFail("extract \(type)") }
+            XCTAssertEqual(its.stationId, id.stationId)
+            XCTAssertEqual(its.destinationPort, 2001)
+            let cam = try CamDenmDecoder.decodeCam(its)
+            XCTAssertEqual(cam.stationType, type)
+            XCTAssertEqual(cam.latitude!, 53.5696, accuracy: 1e-7)
+            XCTAssertEqual(cam.speedKmh!, 18, accuracy: 0.01)
+            XCTAssertEqual(cam.headingDegrees!, 90, accuracy: 0.01)
+            XCTAssertEqual(Ieee80211Mac.sourceAddress(frame), id.macString)
+        }
+        // Unavailable position must still encode and decode
+        let blank = CamEncoder.camFrame(identity: id, stationType: .pedestrian, position: CamPosition(), now: Date())
+        guard case .success(let its) = ItsFrameExtractor.extract(blank) else { return XCTFail() }
+        XCTAssertNil(try CamDenmDecoder.decodeCam(its).latitude)
     }
 
     func testPcapWriterHeaderAndRecord() throws {

@@ -22,6 +22,9 @@ struct StationSummary: Identifiable {
     var headingDegrees: Double? = nil
     var emergency = false
     var summary: String? = nil
+    var lastCam: CamInfo? = nil
+    var lastDenm: DenmInfo? = nil
+    var node: String? = nil          // which receiver heard it last (live/replay: this phone)
 }
 
 /// An active DENM warning, keyed by its action ID (originating station + sequence number).
@@ -64,6 +67,7 @@ final class BridgeModel {
     var showEnrollmentHint = false
     private(set) var eventLog: [LogEntry] = []
     private(set) var intersections: [IntersectionSnapshot] = []
+    @ObservationIgnored var onTxResults: (([(requestId: UInt32, status: UInt32)]) -> Void)?
     private(set) var intersectionDiagnostics = IntersectionDiagnostics()
 
     // Settings (persisted)
@@ -213,6 +217,7 @@ final class BridgeModel {
     }
 
     func flushRecording() { pipeline.flushRecording() }
+    func transmit(_ frame: [UInt8]) -> UInt32 { pipeline.transmit(frame) }
 
     private(set) var replay: (name: String, played: Int, total: Int)?
 
@@ -262,6 +267,7 @@ final class BridgeModel {
         for (date, message) in d.log { record(message, at: date) }
         if let f = d.statistics { firmware = f }
         if let i = d.intersections { intersections = i }
+        if !d.txResults.isEmpty { onTxResults?(d.txResults) }
         if let i = d.intersectionDiagnostics { intersectionDiagnostics = i }
         protocolErrors += d.protocolErrors
         missingSequences += UInt64(d.missingSequences)
@@ -299,6 +305,7 @@ final class BridgeModel {
                 s.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
             }
             if let cam = r.cam {
+                s.lastCam = cam
                 s.stationType = cam.stationType
                 s.speedKmh = cam.speedKmh
                 s.headingDegrees = cam.headingDegrees
@@ -308,7 +315,7 @@ final class BridgeModel {
                     s.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
                 }
             }
-            if let denm = r.denm { s.summary = "Meldet: \(denm.summary)" }
+            if let denm = r.denm { s.summary = "Meldet: \(denm.summary)"; s.lastDenm = denm }
             stations[its.stationId] = s
             if let denm = r.denm {
                 let key = "\(denm.originatingStationId)-\(denm.sequenceNumber)"

@@ -23,6 +23,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink { CamTransmitView() } label: {
+                        Label("Eigene Position als CAM senden", systemImage: "dot.radiowaves.left.and.right")
+                    }
+                } header: {
+                    Text("Senden (TX)")
+                }
+
+                Section {
                     Picker("Bildschirm anlassen", selection: $screen.mode) {
                         ForEach(KeepAwakeMode.allCases) { Text($0.label).tag($0) }
                     }

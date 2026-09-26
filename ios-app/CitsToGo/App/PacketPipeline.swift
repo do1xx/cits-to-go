@@ -27,6 +27,7 @@ struct PipelineDrain {
     var lastError: String?
     var log: [(Date, String)] = []
     var intersections: [IntersectionSnapshot]?
+    var txResults: [(requestId: UInt32, status: UInt32)] = []
     var intersectionDiagnostics: IntersectionDiagnostics?
 }
 
@@ -113,6 +114,21 @@ final class PacketPipeline: BleTransportDelegate {
     }
 
     func deleteRolling() { transport.queue.async { (self.rolling ?? RollingCapture(retentionHours: 24)).deleteAll() } }
+
+    // MARK: Transmit
+
+    private var nextRequestId: UInt32 = 0
+
+    /// Queues a raw 802.11 frame for transmission by the firmware; returns the request ID
+    /// that comes back in the TX result.
+    func transmit(_ frame: [UInt8]) -> UInt32 {
+        transport.queue.sync {
+            nextRequestId &+= 1
+            let id = nextRequestId
+            transport.write(CtgProtocol.txRequest(requestId: id, packet: frame))
+            return id
+        }
+    }
 
     // MARK: Demo
 
@@ -225,7 +241,9 @@ final class PacketPipeline: BleTransportDelegate {
                 handle(packet)
             case .success(.statistics(let s)):
                 pending.statistics = s
-            case .success(.txResult), .success(.bluetoothEnrollmentResult):
+            case .success(.txResult(let id, let status, _)):
+                pending.txResults.append((id, status))
+            case .success(.bluetoothEnrollmentResult):
                 break
             case .failure(let e):
                 pending.protocolErrors += 1
