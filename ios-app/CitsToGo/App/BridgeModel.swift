@@ -67,6 +67,7 @@ final class BridgeModel {
     var showEnrollmentHint = false
     private(set) var eventLog: [LogEntry] = []
     private(set) var intersections: [IntersectionSnapshot] = []
+    @ObservationIgnored var onNewWarning: ((DenmInfo) -> Void)?
     @ObservationIgnored var onTxResults: (([(requestId: UInt32, status: UInt32)]) -> Void)?
     private(set) var intersectionDiagnostics = IntersectionDiagnostics()
 
@@ -104,7 +105,11 @@ final class BridgeModel {
         let d = UserDefaults.standard
         mqttEnabled = d.bool(forKey: "mqtt.enabled")
         mqttUri = d.string(forKey: "mqtt.uri") ?? Self.defaultMqttUri
+        #if targetEnvironment(simulator)
+        communityEnabled = d.object(forKey: "mqtt.community.enabled") as? Bool ?? false   // keep test runs off the shared server
+        #else
         communityEnabled = d.object(forKey: "mqtt.community.enabled") as? Bool ?? true
+        #endif
         customEnabled = d.bool(forKey: "mqtt.custom.enabled")
         rollingEnabled = d.object(forKey: "rolling.enabled") as? Bool ?? true
         rollingHours = d.object(forKey: "rolling.hours") as? Int ?? 24
@@ -319,6 +324,7 @@ final class BridgeModel {
             stations[its.stationId] = s
             if let denm = r.denm {
                 let key = "\(denm.originatingStationId)-\(denm.sequenceNumber)"
+                if warnings[key] == nil, r.live { onNewWarning?(denm) }
                 var w = warnings[key] ?? WarningSummary(denm: denm, lastSeen: r.receivedAt, count: 0)
                 w.denm = denm; w.lastSeen = r.receivedAt; w.count += 1
                 warnings[key] = w

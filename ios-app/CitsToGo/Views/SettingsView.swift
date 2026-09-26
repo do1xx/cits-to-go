@@ -3,11 +3,13 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(BridgeModel.self) private var model
     @Environment(ScreenAwake.self) private var screen
+    @Environment(WarningNotifier.self) private var notifier
     @State private var confirmForget = false
 
     var body: some View {
         @Bindable var model = model
         @Bindable var screen = screen
+        @Bindable var notifier = notifier
         NavigationStack {
             Form {
                 Section {
@@ -20,6 +22,21 @@ struct SettingsView: View {
                     Text("Empfänger (Bluetooth LE)")
                 } footer: {
                     Text("Erstkopplung: Empfänger per USB an einen Computer anschließen, auf cits.dirksreich.de „Kopplung freigeben“ klicken, dann innerhalb von 30 s hier „Verbinden“ tippen und „Koppeln“ bestätigen. Nach einem Neu-Flashen das Gerät vorher unter iOS-Einstellungen › Bluetooth ignorieren.")
+                }
+
+                Section {
+                    Toggle("Bei Warnungen benachrichtigen", isOn: $notifier.enabled)
+                    Picker("Umkreis", selection: $notifier.radiusKm) {
+                        Text("1 km").tag(1); Text("5 km").tag(5); Text("20 km").tag(20); Text("Unbegrenzt").tag(0)
+                    }
+                    .disabled(!notifier.enabled)
+                    if notifier.enabled && !notifier.authorized {
+                        Text("Mitteilungen sind in den iOS-Einstellungen für CITS-to-go nicht erlaubt.").font(.caption).foregroundStyle(.orange)
+                    }
+                } header: {
+                    Text("Warnungen")
+                } footer: {
+                    Text("Meldet jede neue DENM (Stau, Panne, Unfall, Baustelle …) einmal mit Ton, auch bei gesperrtem iPhone. Der Umkreis wird nur beachtet, wenn deine Position bekannt ist.")
                 }
 
                 Section {

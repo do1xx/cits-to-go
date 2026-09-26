@@ -6,6 +6,8 @@ struct CitsToGoApp: App {
     @State private var location = LocationProvider()
     @State private var screen = ScreenAwake()
     @State private var sender = CamSender()
+    @State private var notifier = WarningNotifier()
+    @State private var assistant = AssistantModel()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -15,7 +17,24 @@ struct CitsToGoApp: App {
                 .environment(location)
                 .environment(screen)
                 .environment(sender)
-                .onAppear { sender.attach(model: model, location: location) }
+                .environment(notifier)
+                .environment(assistant)
+                .onAppear {
+                    sender.attach(model: model, location: location)
+                    notifier.location = location
+                    assistant.attach(model: model, location: location)
+                    model.onNewWarning = { [notifier] in notifier.handleNew($0) }
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("-test-warning") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            notifier.handleNew(DenmInfo(originatingStationId: 1234, sequenceNumber: 1, detectionTime: Date(),
+                                                        referenceTime: Date(), terminated: false, latitude: nil, longitude: nil,
+                                                        validitySeconds: 600, stationType: .passengerCar, causeCode: 27,
+                                                        subCauseCode: 1, informationQuality: 3))
+                        }
+                    }
+                    #endif
+                }
                 .onChange(of: model.linkState) { _, s in screen.setReceiverConnected(s.isStreaming) }
                 .onChange(of: scenePhase) { _, phase in
                     if phase != .active { model.flushRecording(); sender.stop(reason: "gestoppt (App im Hintergrund)") } else { screen.update() }

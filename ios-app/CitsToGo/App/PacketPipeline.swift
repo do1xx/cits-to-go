@@ -10,6 +10,7 @@ struct PacketRecord: Identifiable, Sendable {
     let sourceMac: String?
     var cam: CamInfo? = nil
     var denm: DenmInfo? = nil
+    var live = true            // false for replay/demo frames
 
     var title: String { its?.displayName ?? (note == nil ? "802.11" : "GN ?") }
     /// One-line human description of the decoded content, if any.
@@ -291,6 +292,7 @@ final class PacketPipeline: BleTransportDelegate {
             id: nextId, receivedAt: Date(), packet: packet, its: its, note: note,
             sourceMac: Ieee80211Mac.sourceAddress(packet.payload)
         )
+        record.live = forward
         if let its {
             if its.messageId == 2 { record.cam = try? CamDenmDecoder.decodeCam(its) }
             if its.messageId == 1 { record.denm = try? CamDenmDecoder.decodeDenm(its) }

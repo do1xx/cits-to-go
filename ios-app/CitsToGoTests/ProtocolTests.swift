@@ -251,6 +251,48 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNil(try CamDenmDecoder.decodeCam(its).latitude)
     }
 
+    /// Signal assistant on the real MAPEM fixture: approaching an ingress lane finds its signal group,
+    /// driving the other way or standing off the road does not.
+    func testSignalAssistantFindsApproachLane() throws {
+        guard case .success(let its) = ItsFrameExtractor.extract(try resource("secured-mapem-regional-frame")) else { return XCTFail() }
+        let map = try XCTUnwrap(try MapSpatDecoder.decodeMap(its, receivedAt: Date()).first)
+        let lane = try XCTUnwrap(map.lanes.first { $0.ingress && $0.laneType == .vehicle && $0.nodes.count >= 2
+                                                   && $0.connections.contains { $0.signalGroup != nil } })
+        let sg = lane.connections.compactMap(\.signalGroup).first!
+        // Point 60 % along the first segment (from the stop line), in metres
+        let a = lane.nodes[0], b = lane.nodes[1]
+        let x = (Double(a.xCm) + 0.6 * Double(b.xCm - a.xCm)) / 100, y = (Double(a.yCm) + 0.6 * Double(b.yCm - a.yCm)) / 100
+        let lat = map.latitude + y / 111_320, lon = map.longitude + x / (111_320 * cos(map.latitude * .pi / 180))
+        let towardsStop = atan2(Double(a.xCm - b.xCm), Double(a.yCm - b.yCm)) * 180 / .pi
+        func loc(_ course: Double, dLat: Double = 0) -> CLLocation {
+            CLLocation(coordinate: .init(latitude: lat + dLat, longitude: lon), altitude: 0, horizontalAccuracy: 5,
+                       verticalAccuracy: 5, course: (course + 360).truncatingRemainder(dividingBy: 360),
+                       courseAccuracy: 5, speed: 10, speedAccuracy: 1, timestamp: Date())
+        }
+        let now = Date()
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let secs = now.timeIntervalSince(cal.dateInterval(of: .year, for: now)!.start)
+        let moy = Int(secs / 60), ms = Int(secs.truncatingRemainder(dividingBy: 60) * 1000)
+        let end = ((moy % 60) * 600 + ms / 100 + 150) % 36_000        // change in 15 s
+        let spat = SpatIntersection(key: map.key, revision: map.revision, moy: moy, timestampMs: ms,
+                                    movements: [SignalMovement(signalGroup: sg, events: [SignalEvent(state: .protectedAllowed,
+                                        minEndTime: end, likelyTime: end, maxEndTime: end, confidence: nil, advisorySpeedKmh: 50)],
+                                                               connectionIds: [])], receivedAt: now)
+        let snap = IntersectionSnapshot(key: map.key, map: map, spat: spat, firstReceivedAt: now)
+
+        let advice = try XCTUnwrap(SignalAssistant.advice(location: loc(towardsStop), snapshots: [snap], now: now))
+        XCTAssertEqual(advice.laneId, lane.id)
+        XCTAssertEqual(advice.primary?.signalGroup, sg)
+        XCTAssertEqual(advice.primary?.state, .protectedAllowed)
+        XCTAssertEqual(advice.primary?.advisoryKmh, 50)
+        XCTAssertEqual(Double(advice.primary?.secondsLeft ?? 0), 15, accuracy: 1)
+        let segLen = hypot(Double(b.xCm - a.xCm), Double(b.yCm - a.yCm)) / 100
+        XCTAssertEqual(advice.distanceToStopLine, 0.6 * segLen, accuracy: 1)
+
+        XCTAssertNil(SignalAssistant.advice(location: loc(towardsStop + 180), snapshots: [snap], now: now), "wrong direction")
+        XCTAssertNil(SignalAssistant.advice(location: loc(towardsStop, dLat: 0.002), snapshots: [snap], now: now), "220 m off the lane")
+    }
+
     func testPcapWriterHeaderAndRecord() throws {
         let w = try PcapWriter()
         w.write(CitsPacket(sequence: 1, timestampUs: 5, frequencyMhz: 5900, rssiDbm: -60, wifiType: 0, rxState: 0,

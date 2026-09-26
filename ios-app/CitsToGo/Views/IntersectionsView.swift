@@ -4,6 +4,7 @@ import SwiftUI
 struct IntersectionsView: View {
     @Environment(BridgeModel.self) private var model
     @Environment(LocationProvider.self) private var location
+    @Environment(AssistantModel.self) private var assistant
     @AppStorage("intersections.sortByDistance") private var sortByDistance = false
     @State private var selection: IntersectionKey?
 
@@ -21,6 +22,12 @@ struct IntersectionsView: View {
                 if sorted.isEmpty {
                     emptyState
                 } else {
+                    VStack(spacing: 0) {
+                    if let advice = assistant.advice {
+                        SignalAdviceCard(advice: advice)
+                            .padding(.horizontal).padding(.vertical, 8)
+                            .background(Color(.secondarySystemGroupedBackground))
+                    }
                     TabView(selection: $selection) {
                         ForEach(sorted) { snapshot in
                             ScrollView {
@@ -33,6 +40,7 @@ struct IntersectionsView: View {
                     }
                     .tabViewStyle(.page(indexDisplayMode: sorted.count > 1 ? .always : .never))
                     .indexViewStyle(.page(backgroundDisplayMode: .always))
+                    }
                 }
             }
             .background(Color(.systemGroupedBackground))

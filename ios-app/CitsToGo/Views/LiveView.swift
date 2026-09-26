@@ -3,6 +3,7 @@ import SwiftUI
 struct LiveView: View {
     @Environment(BridgeModel.self) private var model
     @Environment(CamSender.self) private var sender
+    @Environment(AssistantModel.self) private var assistant
     @State private var filter: String?
 
     private var filtered: [PacketRecord] {
@@ -28,6 +29,9 @@ struct LiveView: View {
                         .foregroundStyle(.white)
                         .listRowBackground(Color.red)
                     }
+                }
+                if let advice = assistant.advice {
+                    Section { SignalAdviceCard(advice: advice) }
                 }
                 Section {
                     StatusCard()
