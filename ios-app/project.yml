@@ -7,8 +7,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.5.0"
-    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "0.6.0"
+    CURRENT_PROJECT_VERSION: "8"
     DEVELOPMENT_TEAM: K77H3ATFTR
     CODE_SIGN_STYLE: Automatic
 targets:
