@@ -18,6 +18,9 @@ targets:
     sources:
       - path: CitsToGo
         excludes: ["**/*.example"]
+      - Shared
+    dependencies:
+      - target: CitsToGoWidget
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dirkreich.citstogo
@@ -32,12 +35,32 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
     info:
       path: CitsToGo/Info.plist
       properties:
         UIBackgroundModes: [bluetooth-central]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+  CitsToGoWidget:
+    type: app-extension
+    platform: iOS
+    sources: [CitsToGoWidget, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dirkreich.citstogo.widget
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: CITS-to-go
+        SKIP_INSTALL: YES
+    info:
+      path: CitsToGoWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
   CitsToGoTests:
     type: bundle.unit-test
     platform: iOS

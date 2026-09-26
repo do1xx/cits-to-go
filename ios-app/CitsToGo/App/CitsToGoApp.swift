@@ -8,6 +8,7 @@ struct CitsToGoApp: App {
     @State private var sender = CamSender()
     @State private var notifier = WarningNotifier()
     @State private var assistant = AssistantModel()
+    @State private var liveActivity = LiveActivityManager()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -19,10 +20,12 @@ struct CitsToGoApp: App {
                 .environment(sender)
                 .environment(notifier)
                 .environment(assistant)
+                .environment(liveActivity)
                 .onAppear {
                     sender.attach(model: model, location: location)
                     notifier.location = location
                     assistant.attach(model: model, location: location)
+                    liveActivity.attach(model: model, assistant: assistant)
                     model.onNewWarning = { [notifier] in notifier.handleNew($0) }
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("-test-warning") {

@@ -4,12 +4,14 @@ struct SettingsView: View {
     @Environment(BridgeModel.self) private var model
     @Environment(ScreenAwake.self) private var screen
     @Environment(WarningNotifier.self) private var notifier
+    @Environment(LiveActivityManager.self) private var liveActivity
     @State private var confirmForget = false
 
     var body: some View {
         @Bindable var model = model
         @Bindable var screen = screen
         @Bindable var notifier = notifier
+        @Bindable var liveActivity = liveActivity
         NavigationStack {
             Form {
                 Section {
@@ -33,10 +35,11 @@ struct SettingsView: View {
                     if notifier.enabled && !notifier.authorized {
                         Text("Mitteilungen sind in den iOS-Einstellungen für CITS-to-go nicht erlaubt.").font(.caption).foregroundStyle(.orange)
                     }
+                    Toggle("Live-Aktivität (Sperrbildschirm)", isOn: $liveActivity.enabled)
                 } header: {
                     Text("Warnungen")
                 } footer: {
-                    Text("Meldet jede neue DENM (Stau, Panne, Unfall, Baustelle …) einmal mit Ton, auch bei gesperrtem iPhone. Der Umkreis wird nur beachtet, wenn deine Position bekannt ist.")
+                    Text("Meldet jede neue DENM (Stau, Panne, Unfall, Baustelle …) einmal mit Ton, auch bei gesperrtem iPhone. Der Umkreis wird nur beachtet, wenn deine Position bekannt ist. Die Live-Aktivität zeigt auf dem Sperrbildschirm und in der Dynamic Island die nächste Ampel mit Countdown, eine aktuelle Warnung oder den Empfangsstatus.")
                 }
 
                 Section {
