@@ -139,8 +139,11 @@ final class BleTransport: NSObject {
         if let p = peripheral, p.state == .connected || p.state == .connecting { return }
 
         if let id = knownPeripheralId, let p = central.retrievePeripherals(withIdentifiers: [id]).first {
-            log("Bekannten Empfänger \(id.uuidString.prefix(8)) angefordert")
+            log("Bekannten Empfänger \(id.uuidString.prefix(8)) angefordert, suche parallel")
             connect(p)
+            // The stored receiver may be switched off, reflashed or replaced by another board:
+            // look for any CITS-to-go at the same time and take whichever answers first.
+            central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
             return
         }
         if let p = central.retrieveConnectedPeripherals(withServices: [Self.serviceUUID]).first {
@@ -195,7 +198,13 @@ extension BleTransport: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didDiscover p: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        log("Gefunden: \(p.name ?? "?") \(RSSI) dBm")
+        if let current = peripheral, current.identifier == p.identifier { return }
+        log("Gefunden: \(p.name ?? "?") \(p.identifier.uuidString.prefix(8)) \(RSSI) dBm")
+        if let current = peripheral, current.state == .connecting {
+            let stale = current
+            peripheral = nil
+            central.cancelPeripheralConnection(stale)
+        }
         connect(p)
     }
 
@@ -205,12 +214,15 @@ extension BleTransport: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
+        if let current = peripheral, current.identifier != p.identifier { return }
         state = .disconnected(error?.localizedDescription ?? "Verbindung fehlgeschlagen")
         peripheral = nil
         queue.asyncAfter(deadline: .now() + 2) { self.connectIfPossible() }
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
+        // A cancelled pending connection to a previously stored board is not our link.
+        if let current = peripheral, current.identifier != p.identifier { return }
         let wasSecured = secured
         log("Getrennt (gesichert: \(wasSecured ? "ja" : "nein")): \(error?.localizedDescription ?? "ohne Fehler")")
         secured = false
