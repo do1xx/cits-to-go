@@ -80,7 +80,16 @@
     </table>
   </details>
 
-  <p class="muted" style="margin-top:2rem">Firmware 2.43.0 (<a href="firmware/CITS-to-go-firmware-v2.43.0.bin">Datei</a>). <a href="./">Startseite</a></p>
+  <p class="muted" style="margin-top:2rem"><span id="fw">Firmware</span> · <a href="https://github.com/do1xx/cits-to-go/releases">Versionen</a> · <a href="./">Startseite</a></p>
 </main>
+<script>
+  // Version and file come from the manifest that CI publishes, so this page never goes stale.
+  fetch("firmware/manifest.json", { cache: "no-store" }).then(r => r.json()).then(m => {
+    const el = document.getElementById("fw");
+    const path = m.builds?.[0]?.parts?.[0]?.path;
+    el.textContent = `Firmware ${m.version} `;
+    if (path) { const a = document.createElement("a"); a.href = `firmware/${path}`; a.textContent = "(Datei)"; el.append(a); }
+  }).catch(() => {});
+</script>
 </body>
 </html>

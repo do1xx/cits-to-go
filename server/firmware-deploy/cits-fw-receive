@@ -1,0 +1,28 @@
+#!/bin/sh
+# Forced command for the GitHub Actions deploy key (user citsdeploy).
+# Reads a tar archive on stdin that must contain exactly manifest.json and one
+# CITS-to-go-firmware-v*.bin, checks it and swaps it into the web root.
+set -eu
+DEST=/var/www/cits/firmware
+TMP=$(mktemp -d /tmp/cits-fw.XXXXXX)
+trap 'rm -rf "$TMP"' EXIT
+head -c 8000000 | tar -x -C "$TMP" --no-same-owner --no-same-permissions
+cd "$TMP"
+for f in *; do
+  case "$f" in
+    manifest.json) ;;
+    CITS-to-go-firmware-v*.bin) ;;
+    *) echo "unerwartete Datei: $f" >&2; exit 1 ;;
+  esac
+done
+[ -f manifest.json ] || { echo "manifest.json fehlt" >&2; exit 1; }
+bin=$(ls CITS-to-go-firmware-v*.bin 2>/dev/null | head -1)
+[ -n "$bin" ] || { echo "Firmware fehlt" >&2; exit 1; }
+size=$(stat -c %s "$bin")
+[ "$size" -gt 500000 ] && [ "$size" -lt 4194304 ] || { echo "Firmware-Größe unplausibel: $size" >&2; exit 1; }
+grep -q "\"path\": \"$bin\"" manifest.json || { echo "manifest.json verweist nicht auf $bin" >&2; exit 1; }
+cp "$bin" "$DEST/$bin.tmp" && mv "$DEST/$bin.tmp" "$DEST/$bin"
+cp manifest.json "$DEST/manifest.json.tmp" && mv "$DEST/manifest.json.tmp" "$DEST/manifest.json"
+# keep the current and the previous firmware file
+ls -t "$DEST"/CITS-to-go-firmware-v*.bin | tail -n +3 | xargs -r rm -f
+echo "veröffentlicht: $bin"

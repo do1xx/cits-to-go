@@ -281,3 +281,6 @@ website/live-config.js
 # Pi-Bridge-Konfiguration mit Zugangsdaten
 pi-bridge/cits-bridge.env
 __pycache__/
+
+# Firmware wird von GitHub Actions gebaut und veröffentlicht
+website/firmware/

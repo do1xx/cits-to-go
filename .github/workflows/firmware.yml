@@ -1,0 +1,77 @@
+name: Firmware
+
+# Baut die ESP32-C5-Firmware bei jeder Änderung unter firmware/, legt ein Release an
+# und veröffentlicht sie auf cits.dirksreich.de/flash.html.
+on:
+  push:
+    branches: [main]
+    paths: ["firmware/**", ".github/workflows/firmware.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: firmware
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          version="$(tr -d ' \n' < firmware/VERSION)"
+          short="${GITHUB_SHA::7}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "short=$short" >> "$GITHUB_OUTPUT"
+          echo "file=CITS-to-go-firmware-v$version-$short.bin" >> "$GITHUB_OUTPUT"
+
+      - name: Build (gepinnter ESP-IDF-Container)
+        working-directory: firmware
+        run: |
+          docker build -t cits-to-go-rust .
+          docker run --rm -v "$PWD":/project -w /project cits-to-go-rust ./scripts/build.sh
+          sudo chown -R "$(id -u):$(id -g)" .
+
+      - name: Pakete
+        run: |
+          mkdir -p out
+          cp firmware/dist/cits-to-go-firmware-rs.bin "out/${{ steps.v.outputs.file }}"
+          cat > out/manifest.json <<JSON
+          {
+            "name": "CITS-to-go",
+            "version": "${{ steps.v.outputs.version }} (${{ steps.v.outputs.short }})",
+            "new_install_prompt_erase": false,
+            "builds": [
+              {
+                "chipFamily": "ESP32-C5",
+                "parts": [{ "path": "${{ steps.v.outputs.file }}", "offset": 0 }]
+              }
+            ]
+          }
+          JSON
+          (cd out && sha256sum *.bin > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="firmware-v${{ steps.v.outputs.version }}-${{ steps.v.outputs.short }}"
+          gh release create "$tag" out/*.bin out/SHA256SUMS \
+            --title "Firmware ${{ steps.v.outputs.version }} (${{ steps.v.outputs.short }})" \
+            --notes "Automatisch gebaut aus ${{ github.sha }}. Flashen: https://cits.dirksreich.de/flash.html"
+
+      - name: Auf cits.dirksreich.de veröffentlichen
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          tar -cf - -C out manifest.json "${{ steps.v.outputs.file }}" \
+            | ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes citsdeploy@157.90.16.145
