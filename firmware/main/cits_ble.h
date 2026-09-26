@@ -32,6 +32,8 @@ enum {
 
 esp_err_t cits_ble_init(cits_ble_rx_callback_t callback);
 bool cits_ble_write(const uint8_t *data, size_t len, bool control);
+/* A paired phone is connected and subscribed to the capture stream. */
+bool cits_ble_link_ready(void);
 void cits_ble_get_stats(cits_ble_stats_t *out);
 
 /* USB is the trust anchor. Calling this permits exactly one new BLE connection

@@ -29,6 +29,7 @@ unsafe extern "C" {
     fn cits_platform_ble_pin() -> u32;
     fn cits_platform_set_ble_pin(pin: u32) -> i32;
     fn cits_platform_led();
+    fn cits_platform_led_tx();
     fn cits_platform_enter() -> u32;
     fn cits_platform_exit(state: u32);
 }
@@ -464,7 +465,7 @@ async fn transmit() {
         let status = TX_DONE.wait().await;
         result(&mut out, tx.id, status, tx.len as u16, &tx.bytes[..tx.len]);
         if status == wire::OK {
-            unsafe { cits_platform_led() }
+            unsafe { cits_platform_led_tx() }
         };
         drop(tx);
     }

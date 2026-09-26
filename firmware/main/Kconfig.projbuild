@@ -69,8 +69,8 @@ menu "CITS-to-go Configuration"
         default y
 
     config CITS_LED_PULSE_MS
-        int "Accepted packet LED pulse in milliseconds"
+        int "Received packet LED pulse in milliseconds (min. 50)"
         range 1 1000
-        default 35
+        default 60
 
 endmenu

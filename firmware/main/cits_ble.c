@@ -694,3 +694,8 @@ esp_err_t cits_ble_set_pin(uint32_t pin)
     if (err == ESP_OK) ble_pin = pin;
     return err;
 }
+
+bool cits_ble_link_ready(void)
+{
+    return conn_handle != CITS_BLE_INVALID_CONN_HANDLE && notify_enabled && link_secured;
+}

@@ -41,7 +41,8 @@
 static TaskHandle_t executor_task, usb_reader_task, usb_writer_task;
 static QueueHandle_t usb_free, usb_capture, usb_control, radio_queue;
 static esp_timer_handle_t led_timer, stats_timer;
-static _Atomic bool led_active;
+/* LED deadlines in esp_timer microseconds, written by packet paths, read by the LED tick. */
+static _Atomic int64_t led_rx_until, led_tx_until;
 static bool ble_discard;
 static _Atomic uint32_t usb_partial_drops;
 static _Atomic uint32_t usb_bytes_total;
@@ -61,21 +62,32 @@ void cits_platform_wake(void) { if (executor_task) xTaskNotifyGive(executor_task
 void cits_platform_wait(void) { (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY); }
 void cits_platform_input_consumed(void) { xTaskNotifyGive(usb_reader_task); }
 
-static void led_off(void *arg) {
+static void led_set(bool on) {
+    gpio_set_level(CONFIG_CITS_LED_GPIO, CONFIG_CITS_LED_ACTIVE_LOW ? !on : on);
+}
+/* Status LED, evaluated every 25 ms:
+ *  - no phone connected:   short blink every 2 s (heartbeat, "waiting")
+ *  - app connected:        steady on
+ *  - packet received:      short inversion of the above (dark while connected)
+ *  - packet transmitted:   long 400 ms inversion
+ * A frozen LED (steady on or off without blinking while idle) means the firmware hangs. */
+static void led_tick(void *arg) {
     (void)arg;
-    gpio_set_level(CONFIG_CITS_LED_GPIO, CONFIG_CITS_LED_ACTIVE_LOW ? 1 : 0);
-    atomic_store_explicit(&led_active, false, memory_order_release);
+    const int64_t now = esp_timer_get_time();
+    const bool connected = cits_ble_link_ready();
+    const bool base = connected || (now / 1000) % 2000 < 120;
+    const bool pulse = now < atomic_load_explicit(&led_tx_until, memory_order_relaxed) ||
+                       now < atomic_load_explicit(&led_rx_until, memory_order_relaxed);
+    led_set(pulse ? !base : base);
 }
 void cits_platform_led(void) {
-    /* At high packet rates, restarting an esp_timer for every frame adds
-     * avoidable timer-queue traffic. One pulse already indicates activity;
-     * ignore additional packets until that pulse expires. */
-    if (atomic_exchange_explicit(&led_active, true, memory_order_acq_rel)) return;
-    gpio_set_level(CONFIG_CITS_LED_GPIO, CONFIG_CITS_LED_ACTIVE_LOW ? 0 : 1);
-    int64_t timeout = CONFIG_CITS_LED_PULSE_MS * 1000LL;
-    if (esp_timer_start_once(led_timer, timeout) != ESP_OK) {
-        atomic_store_explicit(&led_active, false, memory_order_release);
-    }
+    /* Only stores a deadline; the periodic tick does the GPIO work, so high
+     * packet rates add no timer traffic. Minimum 50 ms so it is visible. */
+    const int64_t ms = CONFIG_CITS_LED_PULSE_MS < 50 ? 50 : CONFIG_CITS_LED_PULSE_MS;
+    atomic_store_explicit(&led_rx_until, esp_timer_get_time() + ms * 1000LL, memory_order_relaxed);
+}
+void cits_platform_led_tx(void) {
+    atomic_store_explicit(&led_tx_until, esp_timer_get_time() + 400000LL, memory_order_relaxed);
 }
 
 static void statistics_tick(void *arg) {
@@ -265,8 +277,8 @@ int32_t cits_platform_start(void) {
     ESP_RETURN_ON_ERROR(usb_serial_jtag_driver_install(&usb), TAG, "USB");
     const gpio_config_t led = { .pin_bit_mask = 1ULL << CONFIG_CITS_LED_GPIO, .mode = GPIO_MODE_OUTPUT };
     ESP_RETURN_ON_ERROR(gpio_config(&led), TAG, "LED");
-    led_off(NULL);
-    const esp_timer_create_args_t timer = { .callback = led_off, .name = "cits-led" };
+    led_set(false);
+    const esp_timer_create_args_t timer = { .callback = led_tick, .name = "cits-led" };
     ESP_RETURN_ON_ERROR(esp_timer_create(&timer, &led_timer), TAG, "timer");
     const esp_timer_create_args_t stats = { .callback = statistics_tick, .name = "cits-stats" };
     ESP_RETURN_ON_ERROR(esp_timer_create(&stats, &stats_timer), TAG, "stats timer");
@@ -281,6 +293,7 @@ int32_t cits_platform_start(void) {
         xTaskCreate(radio_worker, "radio-tx", 4096, NULL, 4, NULL) != pdPASS) return ESP_ERR_NO_MEM;
     ESP_RETURN_ON_ERROR(cits_ble_init(ble_rx), TAG, "BLE");
     ESP_RETURN_ON_ERROR(esp_timer_start_periodic(stats_timer, 1000000), TAG, "stats start");
+    ESP_RETURN_ON_ERROR(esp_timer_start_periodic(led_timer, 25000), TAG, "LED start");
     return wifi_start();
 }
 void app_main(void) {
