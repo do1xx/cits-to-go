@@ -30,8 +30,8 @@ protocol BleTransportDelegate: AnyObject {
     func bleTransport(_ t: BleTransport, didReceive bytes: Data)
     /// Called on the transport queue.
     func bleTransport(_ t: BleTransport, didChange state: BleLinkState)
-    /// Link dropped before encryption was established: the firmware only accepts
-    /// its bonded owner, or an unknown phone during the USB-armed enrollment window.
+    /// Link dropped before encryption was established: pairing was cancelled or the PIN
+    /// was wrong (older firmware: phone not enrolled over USB).
     func bleTransportRejectedUnenrolled(_ t: BleTransport)
     /// Human-readable connection event for the in-app diagnostic log.
     func bleTransport(_ t: BleTransport, log message: String)
@@ -222,7 +222,7 @@ extension BleTransport: CBCentralManagerDelegate {
         if !wasSecured && knownPeripheralId != p.identifier {
             // Firmware terminates unknown peers right after connect.
             delegate?.bleTransportRejectedUnenrolled(self)
-            state = .disconnected("Nicht angelernt – Kopplung abgelehnt")
+            state = .disconnected("Kopplung abgebrochen – PIN prüfen")
             peripheral = nil
             queue.asyncAfter(deadline: .now() + 3) { self.connectIfPossible() }
             return

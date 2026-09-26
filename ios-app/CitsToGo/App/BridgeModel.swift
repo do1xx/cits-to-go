@@ -65,6 +65,8 @@ final class BridgeModel {
     private(set) var customCounters: (published: UInt64, dropped: UInt64, spooled: Int) = (0, 0, 0)
     private(set) var recordingURL: URL?
     var showEnrollmentHint = false
+    /// Result of the last PIN change (nil while none pending/finished).
+    var pinChangeMessage: String?
     private(set) var eventLog: [LogEntry] = []
     private(set) var intersections: [IntersectionSnapshot] = []
     @ObservationIgnored var onNewWarning: ((DenmInfo) -> Void)?
@@ -224,6 +226,11 @@ final class BridgeModel {
     func flushRecording() { pipeline.flushRecording() }
     func transmit(_ frame: [UInt8]) -> UInt32 { pipeline.transmit(frame) }
 
+    func setBluetoothPin(_ pin: UInt32) {
+        pinChangeMessage = "PIN wird gesendet …"
+        pipeline.setBluetoothPin(pin)
+    }
+
     private(set) var replay: (name: String, played: Int, total: Int)?
 
     /// Plays a PCAP through all views (not forwarded, not recorded).
@@ -273,6 +280,11 @@ final class BridgeModel {
         if let f = d.statistics { firmware = f }
         if let i = d.intersections { intersections = i }
         if !d.txResults.isEmpty { onTxResults?(d.txResults) }
+        if let r = d.pinResult {
+            pinChangeMessage = r.status == 0 ? String(format: "Neuer PIN %06u ist aktiv.", r.pin)
+                : String(format: "PIN nicht geändert (Fehler 0x%X), aktiv bleibt %06u.", r.status, r.pin)
+            record(pinChangeMessage!)
+        }
         if let i = d.intersectionDiagnostics { intersectionDiagnostics = i }
         protocolErrors += d.protocolErrors
         missingSequences += UInt64(d.missingSequences)

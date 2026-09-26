@@ -26,6 +26,8 @@ unsafe extern "C" {
     fn cits_platform_stats(out: *mut PlatformStats);
     fn cits_platform_tx(data: *const u8, len: usize, system_sequence: bool);
     fn cits_platform_enroll();
+    fn cits_platform_ble_pin() -> u32;
+    fn cits_platform_set_ble_pin(pin: u32) -> i32;
     fn cits_platform_led();
     fn cits_platform_enter() -> u32;
     fn cits_platform_exit(state: u32);
@@ -342,8 +344,19 @@ async fn input(usb: bool) {
                 Request::Enroll => {
                     unsafe { cits_platform_enroll() };
                     let status = ENROLL_DONE.wait().await;
-                    let n = wire::encode_enrollment(&mut out, status).unwrap();
+                    let pin = unsafe { cits_platform_ble_pin() };
+                    let n = wire::encode_enrollment(&mut out, status, pin).unwrap();
                     let _ = emit(&out[..n], true, true);
+                }
+                Request::SetPin { pin } => {
+                    let status = if pin <= wire::MAX_PIN {
+                        unsafe { cits_platform_set_ble_pin(pin) }
+                    } else {
+                        wire::INVALID_SIZE
+                    };
+                    let current = unsafe { cits_platform_ble_pin() };
+                    let n = wire::encode_pin(&mut out, status, current).unwrap();
+                    let _ = emit(&out[..n], true, usb);
                 }
                 Request::Ignore => {}
             }

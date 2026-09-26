@@ -40,3 +40,11 @@ void cits_ble_get_stats(cits_ble_stats_t *out);
  * The window is consumed as soon as the first unknown peer connects, whether
  * pairing succeeds or fails. */
 void cits_ble_begin_enrollment(void);
+
+/* Bluetooth pairing PIN (passkey entry, MITM-protected Secure Connections).
+ * Anyone with the PIN may pair; one connection at a time; up to 4 bonds, the
+ * oldest is dropped when full. Default 666666, persisted in NVS once changed.
+ * Existing bonds stay valid after a change. */
+#define CITS_BLE_DEFAULT_PIN 666666u
+uint32_t cits_ble_get_pin(void);
+esp_err_t cits_ble_set_pin(uint32_t pin);

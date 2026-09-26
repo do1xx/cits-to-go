@@ -52,8 +52,16 @@ pub enum Request<'a> {
         status: i32,
     },
     Enroll,
+    /// Change the Bluetooth pairing PIN (USB, or BLE from an already paired phone).
+    SetPin {
+        pin: u32,
+    },
     Ignore,
 }
+
+/// Default Bluetooth pairing PIN until the owner sets another one.
+pub const DEFAULT_PIN: u32 = 666_666;
+pub const MAX_PIN: u32 = 999_999;
 
 pub fn parse_record(decoded: &[u8], from_usb: bool) -> Request<'_> {
     let n = decoded.len();
@@ -77,6 +85,16 @@ pub fn parse_record(decoded: &[u8], from_usb: bool) -> Request<'_> {
     if decoded[5] == 4 {
         return if from_usb && header == 12 && n == 16 && decoded[8] == 1 {
             Request::Enroll
+        } else {
+            Request::Ignore
+        };
+    }
+    if decoded[5] == 7 {
+        // BLE writes only reach the parser on an encrypted, PIN-paired link.
+        return if header == 12 && n == 16 {
+            Request::SetPin {
+                pin: u32_at(decoded, 8),
+            }
         } else {
             Request::Ignore
         };
@@ -343,11 +361,23 @@ pub fn encode_result(
     }
     e.finish()
 }
-pub fn encode_enrollment(out: &mut [u8], status: i32) -> Result<usize, BufferTooSmall> {
+/// Enrollment response; the three formerly reserved bytes carry the current
+/// Bluetooth PIN (24-bit little endian) so USB tools can show it.
+pub fn encode_enrollment(out: &mut [u8], status: i32, pin: u32) -> Result<usize, BufferTooSmall> {
     let mut e = Encoder::new(out)?;
     e.bytes(&header(5, 16))?;
     e.bytes(&status.to_le_bytes())?;
-    e.bytes(&[(status == OK) as u8, 0, 0, 0])?;
+    let p = pin.to_le_bytes();
+    e.bytes(&[(status == OK) as u8, p[0], p[1], p[2]])?;
+    e.finish()
+}
+
+/// Response to a PIN change (type 8): status and the PIN now in effect.
+pub fn encode_pin(out: &mut [u8], status: i32, pin: u32) -> Result<usize, BufferTooSmall> {
+    let mut e = Encoder::new(out)?;
+    e.bytes(&header(8, 16))?;
+    e.bytes(&status.to_le_bytes())?;
+    e.bytes(&pin.to_le_bytes())?;
     e.finish()
 }
 

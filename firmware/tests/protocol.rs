@@ -133,6 +133,29 @@ fn enrollment_is_usb_only() {
     assert_eq!(parse_record(&raw, false), Request::Ignore);
 }
 #[test]
+fn set_pin_is_parsed_from_usb_and_ble() {
+    let mut raw = b"CTG1\x01\x07\x0c\x00".to_vec();
+    raw.extend(123_456u32.to_le_bytes());
+    let decoded = decode(&frame(raw));
+    assert_eq!(
+        parse_record(&decoded, true),
+        Request::SetPin { pin: 123_456 }
+    );
+    assert_eq!(
+        parse_record(&decoded, false),
+        Request::SetPin { pin: 123_456 }
+    );
+}
+#[test]
+fn pin_response_layout() {
+    let mut out = [0; MAX_ENCODED];
+    let n = encode_pin(&mut out, OK, 424_242).unwrap();
+    let mut expected = b"CTG1\x01\x08\x10\x00".to_vec();
+    expected.extend(OK.to_le_bytes());
+    expected.extend(424_242u32.to_le_bytes());
+    assert_eq!(&out[..n], frame(expected));
+}
+#[test]
 fn capture_matches_legacy_layout_and_crc() {
     let mut packet = vec![0x08, 0, 0, 0];
     packet.extend([255; 6]);
@@ -180,10 +203,11 @@ fn results_echo_only_successful_payloads() {
 fn enrollment_response_matches_android() {
     let mut out = [0; MAX_ENCODED];
     for status in [OK, NO_MEM] {
-        let n = encode_enrollment(&mut out, status).unwrap();
+        let n = encode_enrollment(&mut out, status, 666_666).unwrap();
         let mut expected = b"CTG1\x01\x05\x10\x00".to_vec();
         expected.extend(status.to_le_bytes());
-        expected.extend([(status == OK) as u8, 0, 0, 0]);
+        let p = 666_666u32.to_le_bytes();
+        expected.extend([(status == OK) as u8, p[0], p[1], p[2]]);
         assert_eq!(&out[..n], frame(expected));
     }
 }
@@ -234,9 +258,9 @@ fn output_capacity_and_full_size_records() {
             u32::from_le_bytes(raw[raw.len() - 4..].try_into().unwrap())
         );
     }
-    let needed = encode_enrollment(&mut [0; MAX_ENCODED], OK).unwrap();
+    let needed = encode_enrollment(&mut [0; MAX_ENCODED], OK, DEFAULT_PIN).unwrap();
     for len in 0..needed {
-        assert!(encode_enrollment(&mut vec![0; len], OK).is_err());
+        assert!(encode_enrollment(&mut vec![0; len], OK, DEFAULT_PIN).is_err());
     }
 }
 #[test]

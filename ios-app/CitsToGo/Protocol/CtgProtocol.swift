@@ -52,6 +52,7 @@ enum CtgInboundFrame: Sendable {
     case capture(CitsPacket)
     case txResult(requestId: UInt32, status: UInt32, packetLength: UInt16)
     case bluetoothEnrollmentResult(status: UInt32, armed: Bool)
+    case pinResult(status: UInt32, pin: UInt32)
     case statistics(FirmwareStatistics)
 }
 
@@ -68,6 +69,8 @@ enum CtgProtocol {
     static let typeBleEnrollRequest: UInt8 = 4
     static let typeBleEnrollResult: UInt8 = 5
     static let typeStatistics: UInt8 = 6
+    static let typeSetPin: UInt8 = 7
+    static let typePinResult: UInt8 = 8
 
     static let captureHeaderLen = 32
     static let txRequestHeaderLen = 16
@@ -122,6 +125,9 @@ enum CtgProtocol {
                 throw CtgProtocolError("Malformed Bluetooth enrollment result")
             }
             return .bluetoothEnrollmentResult(status: d.u32le(8), armed: d[12] != 0)
+        case typePinResult:
+            guard headerLen == 16, d.count == headerLen + crcLen else { throw CtgProtocolError("Malformed PIN result") }
+            return .pinResult(status: d.u32le(8), pin: d.u32le(12))
         case typeStatistics:
             guard headerLen == statisticsHeaderLen, d.count == headerLen + crcLen else {
                 throw CtgProtocolError("Malformed statistics record")
@@ -165,6 +171,14 @@ enum CtgProtocol {
     static func bluetoothEnrollmentRequest() -> [UInt8] {
         var d = header(type: typeBleEnrollRequest, headerLen: bleEnrollRequestHeaderLen, bodyLen: 0)
         d[8] = 1 // replace existing owner and arm exactly one pairing attempt
+        return seal(d)
+    }
+
+    /// Changes the Bluetooth pairing PIN (0…999999); only accepted over an already paired link.
+    static func setPinRequest(_ pin: UInt32) -> [UInt8] {
+        precondition(pin <= 999_999)
+        var d = header(type: typeSetPin, headerLen: 12, bodyLen: 0)
+        d.putU32le(pin, at: 8)
         return seal(d)
     }
 

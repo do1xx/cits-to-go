@@ -152,10 +152,12 @@ private struct Metric: View {
 struct EnrollmentHint: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Empfänger lehnt dieses iPhone ab", systemImage: "lock.trianglebadge.exclamationmark")
+            Label("Kopplung nicht abgeschlossen", systemImage: "lock.trianglebadge.exclamationmark")
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
-            Text("Die Firmware akzeptiert neue Geräte nur nach USB-Freigabe. Empfänger an einen Computer anschließen, auf cits.dirksreich.de „Kopplung freigeben“ klicken und innerhalb von 30 s hier „Verbinden“ tippen und die Kopplung bestätigen.")
+            Text("Beim Verbinden fragt das iPhone nach einem Code. Ab Werk ist das 666666, sonst der PIN, den der Besitzer des Empfängers eingestellt hat. Tippe auf „Verbinden“ und gib den PIN ein.")
                 .font(.caption)
+            Text("Ältere Firmware (vor PIN-Kopplung) nimmt neue Geräte nur nach USB-Freigabe auf cits.dirksreich.de an.")
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 }

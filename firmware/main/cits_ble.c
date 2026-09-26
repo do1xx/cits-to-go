@@ -10,6 +10,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "nvs.h"
 #include "host/ble_att.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
@@ -25,7 +26,7 @@
 
 #define CITS_BLE_DEVICE_NAME "CITS-to-go"
 #define CITS_BLE_INVALID_CONN_HANDLE 0xffffu
-#define CITS_BLE_MAX_BONDS 2
+#define CITS_BLE_MAX_BONDS 4
 #define CITS_BLE_ENROLLMENT_WINDOW_US (30LL * 1000LL * 1000LL)
 #define CITS_BLE_FRAME_HEADER_LEN 32u
 #define CITS_BLE_FRAME_TRAILER_LEN 4u
@@ -80,6 +81,11 @@ static bool enrollment_armed;
 static int64_t enrollment_deadline_us;
 static uint16_t enrollment_conn_handle = CITS_BLE_INVALID_CONN_HANDLE;
 static uint8_t own_addr_type;
+static uint32_t ble_pin = CITS_BLE_DEFAULT_PIN;
+/* Peer on this connection is new and may create a bond. Anyone who knows the
+ * PIN may pair; only one phone is connected at a time (MAX_CONNECTIONS=1).
+ * New bonds must be PIN-authenticated. */
+static bool conn_may_pair;
 
 static void advertise(void);
 static void enroll_on_host(struct ble_npl_event *event);
@@ -227,6 +233,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         conn_handle = event->connect.conn_handle;
         notify_enabled = false;
         link_secured = false;
+        conn_may_pair = false;
         rc = ble_gap_conn_find(event->connect.conn_handle, &desc);
         if (rc != 0) {
             (void)ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
@@ -261,13 +268,16 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             enrollment_armed = false;
             enrollment_deadline_us = 0;
             enrollment_conn_handle = event->connect.conn_handle;
+            conn_may_pair = true;
             return 0;
         }
 
         enrollment_armed = false;
         enrollment_deadline_us = 0;
-        /* Unknown peers are never allowed to start pairing during normal use. */
-        (void)ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        /* Unknown phone: ask it to pair right away so the PIN dialog shows.
+         * Wrong PIN or cancel ends in a failed ENC_CHANGE and a disconnect. */
+        conn_may_pair = true;
+        (void)ble_gap_security_initiate(event->connect.conn_handle);
         return 0;
 
     case BLE_GAP_EVENT_ENC_CHANGE:
@@ -283,6 +293,13 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             (void)ble_gap_terminate(event->enc_change.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
             return 0;
         }
+        if (conn_may_pair && !desc.sec_state.authenticated) {
+            /* A new bond must be PIN-authenticated (no Just Works fallback). */
+            link_secured = false;
+            (void)ble_store_util_delete_peer(&desc.peer_id_addr);
+            (void)ble_gap_terminate(event->enc_change.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+            return 0;
+        }
         link_secured = true;
         refresh_link_stats(event->enc_change.conn_handle);
         request_fast_connection(event->enc_change.conn_handle);
@@ -292,6 +309,15 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             delete_other_bonds(&desc.peer_id_addr);
         }
         enrollment_conn_handle = CITS_BLE_INVALID_CONN_HANDLE;
+        return 0;
+
+    case BLE_GAP_EVENT_PASSKEY_ACTION:
+        if (event->passkey.params.action == BLE_SM_IOACT_DISP) {
+            /* No display: the "displayed" passkey is the configured PIN,
+             * which the user types on the phone. */
+            struct ble_sm_io pk = { .action = BLE_SM_IOACT_DISP, .passkey = ble_pin };
+            (void)ble_sm_inject_io(event->passkey.conn_handle, &pk);
+        }
         return 0;
 
     case BLE_GAP_EVENT_CONN_UPDATE:
@@ -316,7 +342,13 @@ static int gap_event(struct ble_gap_event *event, void *arg)
                 return BLE_GAP_REPEAT_PAIRING_RETRY;
             }
         }
-        /* Never silently replace a stored identity during normal operation. */
+        /* A known phone that lost its keys may pair again; the new bond still
+         * needs the PIN (MITM), so drop the stale key and retry. */
+        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0 &&
+            ble_store_util_delete_peer(&desc.peer_id_addr) == 0) {
+            conn_may_pair = true;
+            return BLE_GAP_REPEAT_PAIRING_RETRY;
+        }
         return BLE_GAP_REPEAT_PAIRING_IGNORE;
 
     case BLE_GAP_EVENT_DISCONNECT:
@@ -325,6 +357,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         conn_handle = CITS_BLE_INVALID_CONN_HANDLE;
         notify_enabled = false;
         link_secured = false;
+        conn_may_pair = false;
         enrollment_conn_handle = CITS_BLE_INVALID_CONN_HANDLE;
         clear_link_stats();
         if (tx_task_handle != NULL) xTaskNotifyGive(tx_task_handle);
@@ -536,9 +569,10 @@ esp_err_t cits_ble_init(cits_ble_rx_callback_t callback)
 
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-    ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+    /* Passkey entry: the phone asks for the PIN (default 666666). */
+    ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
     ble_hs_cfg.sm_bonding = 1;
-    ble_hs_cfg.sm_mitm = 0; /* USB-controlled enrollment provides physical authorization. */
+    ble_hs_cfg.sm_mitm = 1;
     ble_hs_cfg.sm_sc = 1;
     ble_hs_cfg.sm_our_key_dist |= BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist |= BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
@@ -554,6 +588,13 @@ esp_err_t cits_ble_init(cits_ble_rx_callback_t callback)
     if (rc != 0) return ESP_FAIL;
 
     ble_store_config_init();
+
+    nvs_handle_t nvs;
+    if (nvs_open("cits", NVS_READONLY, &nvs) == ESP_OK) {
+        uint32_t stored;
+        if (nvs_get_u32(nvs, "ble_pin", &stored) == ESP_OK && stored <= 999999u) ble_pin = stored;
+        nvs_close(nvs);
+    }
     if (xTaskCreate(tx_task, "cits_ble_tx", 4096, NULL, 3, &tx_task_handle) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
@@ -634,4 +675,22 @@ void cits_ble_get_stats(cits_ble_stats_t *out)
     out->supervision_timeout = atomic_load(&current_supervision_timeout);
     out->tx_phy = atomic_load(&current_tx_phy);
     out->rx_phy = atomic_load(&current_rx_phy);
+}
+
+uint32_t cits_ble_get_pin(void)
+{
+    return ble_pin;
+}
+
+esp_err_t cits_ble_set_pin(uint32_t pin)
+{
+    if (pin > 999999u) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("cits", NVS_READWRITE, &nvs);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u32(nvs, "ble_pin", pin);
+    if (err == ESP_OK) err = nvs_commit(nvs);
+    nvs_close(nvs);
+    if (err == ESP_OK) ble_pin = pin;
+    return err;
 }

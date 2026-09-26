@@ -229,6 +229,8 @@ void cits_platform_ble_disconnected(void) {
     cits_rs_ble_reset();
 }
 void cits_platform_enroll(void) { cits_ble_begin_enrollment(); }
+uint32_t cits_platform_ble_pin(void) { return cits_ble_get_pin(); }
+int32_t cits_platform_set_ble_pin(uint32_t pin) { return cits_ble_set_pin(pin); }
 
 static void sniffer(void *buf, wifi_promiscuous_pkt_type_t type) {
     const wifi_promiscuous_pkt_t *packet = buf;

@@ -29,6 +29,7 @@ struct PipelineDrain {
     var log: [(Date, String)] = []
     var intersections: [IntersectionSnapshot]?
     var txResults: [(requestId: UInt32, status: UInt32)] = []
+    var pinResult: (status: UInt32, pin: UInt32)?
     var intersectionDiagnostics: IntersectionDiagnostics?
 }
 
@@ -119,6 +120,10 @@ final class PacketPipeline: BleTransportDelegate {
     // MARK: Transmit
 
     private var nextRequestId: UInt32 = 0
+
+    func setBluetoothPin(_ pin: UInt32) {
+        transport.queue.async { self.transport.write(CtgProtocol.setPinRequest(pin)) }
+    }
 
     /// Queues a raw 802.11 frame for transmission by the firmware; returns the request ID
     /// that comes back in the TX result.
@@ -246,6 +251,8 @@ final class PacketPipeline: BleTransportDelegate {
                 pending.txResults.append((id, status))
             case .success(.bluetoothEnrollmentResult):
                 break
+            case .success(.pinResult(let status, let pin)):
+                pending.pinResult = (status, pin)
             case .failure(let e):
                 pending.protocolErrors += 1
                 pending.lastError = e.description

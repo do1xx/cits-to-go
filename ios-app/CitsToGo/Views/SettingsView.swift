@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(WarningNotifier.self) private var notifier
     @Environment(LiveActivityManager.self) private var liveActivity
     @State private var confirmForget = false
+    @State private var newPin = ""
 
     var body: some View {
         @Bindable var model = model
@@ -23,7 +24,22 @@ struct SettingsView: View {
                 } header: {
                     Text("Empfänger (Bluetooth LE)")
                 } footer: {
-                    Text("Erstkopplung: Empfänger per USB an einen Computer anschließen, auf cits.dirksreich.de „Kopplung freigeben“ klicken, dann innerhalb von 30 s hier „Verbinden“ tippen und „Koppeln“ bestätigen. Nach einem Neu-Flashen das Gerät vorher unter iOS-Einstellungen › Bluetooth ignorieren.")
+                    Text("Beim ersten Verbinden fragt das iPhone nach dem Kopplungscode: ab Werk 666666. Es kann immer nur ein Handy gleichzeitig verbunden sein. Nach einem Neu-Flashen das Gerät vorher unter iOS-Einstellungen › Bluetooth ignorieren.")
+                }
+
+                Section {
+                    TextField("Neuer PIN (6 Ziffern)", text: $newPin)
+                        .keyboardType(.numberPad)
+                        .onChange(of: newPin) { _, v in newPin = String(v.filter(\.isNumber).prefix(6)) }
+                    Button("PIN am Empfänger setzen") {
+                        if let pin = UInt32(newPin) { model.setBluetoothPin(pin); newPin = "" }
+                    }
+                    .disabled(newPin.count != 6 || !model.linkState.isStreaming)
+                    if let m = model.pinChangeMessage { Text(m).font(.caption).foregroundStyle(.secondary) }
+                } header: {
+                    Text("Kopplungscode ändern")
+                } footer: {
+                    Text("Nur möglich, während dieses iPhone mit dem Empfänger verbunden ist. Bereits gekoppelte Handys bleiben gekoppelt, neue brauchen den neuen PIN. Wer den PIN vergisst, kann ihn per USB auf cits.dirksreich.de auslesen.")
                 }
 
                 Section {
