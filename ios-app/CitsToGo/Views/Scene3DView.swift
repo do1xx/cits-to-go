@@ -72,6 +72,7 @@ struct Scene3DView: View {
         var ego: CLLocationCoordinate2D?
         var center: CLLocationCoordinate2D?
         var egoHeading: Double = 0      // direction the camera looks (degrees)
+        var egoSpeedKmh: Double = 0
         var extent: Double = 40         // distance to the farthest body (m), sizes the camera
         var caption = ""
     }
@@ -85,6 +86,7 @@ struct Scene3DView: View {
             origin = l.coordinate
             s.ego = origin
             if l.course >= 0, l.speed > 1 { s.egoHeading = l.course; driving = true }
+            s.egoSpeedKmh = max(0, l.speed) * 3.6
         } else if let first = recent.max(by: { $0.lastSeen < $1.lastSeen })?.coordinate {
             origin = first
         } else {
@@ -199,6 +201,8 @@ private struct MapLibre3DContainer: UIViewRepresentable {
         private var lastRingCenter: CLLocationCoordinate2D?
         private var lastUserGesture = Date.distantPast
         private var lastCameraKey = ""
+        private var lastZoomChange = Date.distantPast
+        private var lastTopDown: Bool?
         private var triedFallback = false
 
         init(onSelect: @escaping (UInt32) -> Void) { self.onSelect = onSelect }
@@ -303,15 +307,8 @@ private struct MapLibre3DContainer: UIViewRepresentable {
 
             var bodies: [MLNShape & MLNFeature] = []
             var texts: [MLNShape & MLNFeature] = []
-            // Real size when close; exaggerated up to 4x when the view spans hundreds of metres.
-            let scale = topDown ? min(max(s.extent / 50, 1), 5) : min(max(s.extent / 70, 1), 4)
-            if let ego = s.ego {
-                bodies.append(Self.arrow(at: ego, heading: s.egoHeading, type: .passengerCar, color: "#1e6fd9", stale: false, id: 0, scale: scale))
-                let p = MLNPointFeature()
-                p.coordinate = ego
-                p.attributes = ["label": "", "color": "#1e6fd9"]
-                texts.append(p)
-            }
+            // Real size when zoomed in close; exaggerated up to 4x when zoomed out so vehicles stay visible.
+            let scale = min(max(pow(2, 17.3 - mapView.zoomLevel), 1), 4)
             for b in s.bodies {
                 let color = Self.color(for: b)
                 bodies.append(Self.arrow(at: b.coordinate, heading: b.heading ?? 0, type: b.type, color: color, stale: b.stale, id: b.id, scale: scale))
@@ -338,7 +335,60 @@ private struct MapLibre3DContainer: UIViewRepresentable {
                 })
             }
 
-            // Camera: chase from behind the heading, looking a bit ahead, or straight down.
+            if s.ego != nil {
+                navigationCamera(mapView, speedKmh: s.egoSpeedKmh, topDown: topDown)
+            } else {
+                stationCamera(mapView, s, topDown: topDown)
+            }
+        }
+
+        /// Like a car navigation system: MapLibre follows the GPS itself (smoothly interpolated),
+        /// the map turns with the driving direction, the own arrow sits in the lower part of the
+        /// screen and the zoom depends on the speed. After a gesture it snaps back after 10 s.
+        private func navigationCamera(_ mapView: MLNMapView, speedKmh: Double, topDown: Bool) {
+            if !mapView.showsUserLocation {
+                mapView.locationManager.setDesiredAccuracy?(kCLLocationAccuracyBestForNavigation)
+                mapView.locationManager.setActivityType?(.automotiveNavigation)
+                mapView.showsUserLocation = true
+                mapView.showsUserHeadingIndicator = true
+            }
+            let inset = topDown ? 0 : mapView.bounds.height * 0.38
+            if abs(mapView.contentInset.top - inset) > 1 {
+                mapView.setContentInset(UIEdgeInsets(top: inset, left: 0, bottom: 0, right: 0), animated: true, completionHandler: nil)
+            }
+            let idle = Date().timeIntervalSince(lastUserGesture) > 10
+            let wanted: MLNUserTrackingMode = topDown ? .follow : .followWithCourse
+            if (mapView.userTrackingMode != wanted || lastTopDown != topDown) && idle {
+                lastTopDown = topDown
+                let cam = mapView.camera.copy() as! MLNMapCamera
+                cam.pitch = topDown ? 0 : 60
+                if topDown { cam.heading = 0 }
+                cam.altitude = MLNAltitudeForZoomLevel(Self.zoom(forKmh: speedKmh, topDown: topDown), cam.pitch,
+                                                       mapView.centerCoordinate.latitude, mapView.bounds.size)
+                mapView.setCamera(cam, animated: false)
+                mapView.setUserTrackingMode(wanted, animated: false, completionHandler: nil)
+                lastZoomChange = Date()
+                return
+            }
+            // Faster → further ahead; only small, rare steps so the picture stays calm.
+            let target = Self.zoom(forKmh: speedKmh, topDown: topDown)
+            if idle, abs(mapView.zoomLevel - target) > 0.3, Date().timeIntervalSince(lastZoomChange) > 4 {
+                lastZoomChange = Date()
+                mapView.setZoomLevel(target, animated: true)
+            }
+        }
+
+        private static func zoom(forKmh v: Double, topDown: Bool) -> Double {
+            (topDown ? 17.2 : 18.4) - min(max((v - 15) / 35, 0), 2.2)  // 18.4 slow … 16.2 on the motorway
+        }
+
+        /// Without an own position: chase camera over the received stations, as before.
+        private func stationCamera(_ mapView: MLNMapView, _ s: Scene3DView.Snapshot3D, topDown: Bool) {
+            if mapView.showsUserLocation {
+                mapView.userTrackingMode = .none
+                mapView.showsUserLocation = false
+                mapView.setContentInset(.zero, animated: false, completionHandler: nil)
+            }
             guard let center = s.center, Date().timeIntervalSince(lastUserGesture) > 20 else { return }
             let e = min(max(s.extent, 40), 600)
             let look = topDown ? center : Geo.local(center, heading: s.egoHeading, forward: e * 0.35, right: 0)
