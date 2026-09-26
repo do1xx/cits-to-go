@@ -3,261 +3,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CITS-to-go – Dokumentation und Webflasher</title>
-<meta name="description" content="C-ITS-Empfänger auf Basis des ESP32-C5 mit iOS-App: Firmware im Browser flashen, mit Code koppeln, Nutzung und technische Details.">
+<title>CITS-to-go</title>
+<meta name="description" content="C-ITS-Empfänger mit ESP32-C5 und iPhone-App.">
 <link rel="icon" href="img/icon.png">
-<link rel="apple-touch-icon" href="img/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --ink: #1f2428;
-    --muted: #5d6770;
-    --faint: #8a949c;
-    --rule: #dfe3e6;
-    --bg: #ffffff;
-    --tint: #f4f6f7;
-    --accent: #0b4f8a;
-    --accent-deep: #083b68;
-    --red: #c4231c;
-    --amber: #b77f00;
-    --green: #1c8a43;
-    --mono: "Overpass Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
+  :root { --ink: #1f2428; --muted: #5d6770; --rule: #dfe3e6; --bg: #ffffff; --accent: #0b4f8a; }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 4.5rem; }
-  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1.0625rem; line-height: 1.6; color: var(--ink); background: var(--bg); }
-  a { color: var(--accent); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
-  a:hover { color: var(--accent-deep); }
-  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; border-radius: 3px; }
-  code, .mono { font-family: var(--mono); font-size: 0.9em; }
-  :not(pre) > code { background: var(--tint); border: 1px solid var(--rule); padding: 0.05em 0.35em; border-radius: 0.25rem; }
-  pre { font-family: var(--mono); font-size: 0.88rem; background: var(--tint); border: 1px solid var(--rule); border-radius: 0.4rem; padding: 0.9rem 1rem; overflow-x: auto; line-height: 1.5; }
-
-  /* Top bar */
-  .topbar { position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.96); backdrop-filter: blur(6px); border-bottom: 1px solid var(--rule); }
-  .topbar .inner { max-width: 74rem; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; align-items: center; gap: 1.5rem; }
-  .logo { display: flex; align-items: center; gap: 0.55rem; font-weight: 800; color: var(--ink); text-decoration: none; }
-  .logo img { width: 1.7rem; height: 1.7rem; border-radius: 0.4rem; }
-  .topbar nav { margin-left: auto; display: flex; gap: 1.25rem; font-size: 0.95rem; }
-  .topbar nav a { color: var(--muted); text-decoration: none; }
-  .topbar nav a:hover { color: var(--ink); }
-
-  /* Layout: sticky table of contents + article */
-  .layout { max-width: 74rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 3.5rem; }
-  .toc { position: sticky; top: 5rem; align-self: start; font-size: 0.93rem; }
-  .toc p { font-weight: 700; margin: 0 0 0.5rem; }
-  .toc ol { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--rule); }
-  .toc a { display: block; padding: 0.25rem 0 0.25rem 0.85rem; margin-left: -2px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; }
-  .toc a:hover { color: var(--ink); }
-  .toc a.active { color: var(--accent); border-left-color: var(--accent); }
-  article { max-width: 44rem; }
-
-  h1 { font-size: 2.3rem; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em; margin: 0 0 0.9rem; }
-  h2 { font-size: 1.55rem; font-weight: 800; line-height: 1.2; margin: 3.5rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); }
-  h3 { font-size: 1.15rem; font-weight: 700; margin: 2rem 0 0.5rem; }
-  p, ul, ol { margin: 0 0 1rem; }
-  .intro { font-size: 1.15rem; color: var(--muted); }
-
-  table { width: 100%; border-collapse: collapse; margin: 1.25rem 0 1.5rem; font-size: 0.97rem; }
-  th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.8rem 0.55rem 0; border-bottom: 1px solid var(--rule); }
-  th { font-weight: 700; color: var(--muted); width: 32%; }
-  thead th { color: var(--ink); width: auto; border-bottom: 2px solid var(--rule); }
-
-  /* Setup steps: a real sequence, so numbered */
-  .step { position: relative; padding: 0 0 0.5rem 3rem; margin-top: 2.25rem; }
-  .step::before {
-    content: attr(data-n); position: absolute; left: 0; top: 0.05rem; width: 2rem; height: 2rem; border-radius: 50%;
-    background: var(--ink); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 0.95rem;
-  }
-  .step.done::before { content: "✓"; background: var(--green); }
-  .step h3 { margin-top: 0.1rem; }
-  .tool { border: 1px solid var(--rule); border-radius: 0.5rem; padding: 1.1rem 1.2rem; background: var(--tint); margin: 1rem 0; }
-  .tool .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
-  .btn { font: inherit; font-weight: 700; font-size: 1rem; cursor: pointer; border: 0; border-radius: 0.35rem; padding: 0.7rem 1.15rem; background: var(--accent); color: #fff; text-decoration: none; display: inline-block; }
-  .btn:hover { background: var(--accent-deep); color: #fff; }
-  .btn:disabled { background: #9aa5ae; cursor: default; }
-  .btn.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
-  .meta { color: var(--muted); font-size: 0.92rem; }
-  .check { color: var(--muted); font-size: 0.92rem; display: inline-flex; align-items: center; gap: 0.4rem; }
-  .status { margin: 0.8rem 0 0; font-weight: 600; min-height: 1.4em; }
-  .status.ok { color: var(--green); }
-  .status.err { color: var(--red); }
-  .status.wait { color: var(--accent); }
-  .timer { font-variant-numeric: tabular-nums; font-weight: 800; }
-
-  .note { border-left: 3px solid var(--amber); background: #fbf6ea; padding: 0.75rem 1rem; border-radius: 0 0.3rem 0.3rem 0; margin: 1rem 0 1.5rem; font-size: 0.97rem; }
-  .figure { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 1.75rem; align-items: start; margin: 1.25rem 0; }
-  .figure img { width: 100%; border: 1px solid var(--rule); border-radius: 1.1rem; display: block; }
-  .phase { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-right: 0.4rem; vertical-align: 0.05em; }
-
-  footer { border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.92rem; }
-  footer .inner { max-width: 74rem; margin: 0 auto; padding: 1.75rem 1.25rem 2.5rem; }
-  footer p { margin: 0 0 0.4rem; max-width: 50rem; }
-  [hidden] { display: none !important; }
-
-  @media (max-width: 860px) {
-    .layout { grid-template-columns: 1fr; gap: 0; padding-top: 1.5rem; }
-    .toc { display: none; }
-    .topbar nav { gap: 0.9rem; }
-    h1 { font-size: 1.9rem; }
-    .figure { grid-template-columns: 1fr; }
-    .figure img { max-width: 14rem; }
-    th { width: 40%; }
-  }
+  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1.05rem; line-height: 1.55; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); text-underline-offset: 0.18em; }
+  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; }
+  main { max-width: 34rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+  h1 { display: flex; align-items: center; gap: 0.7rem; font-size: 2rem; font-weight: 800; margin: 0 0 0.3rem; }
+  h1 img { width: 2.4rem; height: 2.4rem; border-radius: 0.55rem; }
+  .sub { color: var(--muted); margin: 0 0 2.2rem; }
+  ul { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--rule); }
+  li a { display: block; padding: 0.85rem 0; border-bottom: 1px solid var(--rule); font-weight: 700; text-decoration: none; }
+  li a:hover { text-decoration: underline; }
+  .foot { color: var(--muted); font-size: 0.9rem; margin-top: 2.5rem; }
 </style>
 </head>
 <body>
-
-<header class="topbar">
-  <div class="inner">
-    <a class="logo" href="#"><img src="img/icon.png" alt="">CITS-to-go</a>
-    <nav>
-      <a href="#einrichtung">Einrichtung</a>
-      <a href="live.html">Live</a>
-      <a href="stats.html">Statistik</a>
-      <a href="coverage.html">Empfangskarte</a>
-      <a href="flash.html">Flashen</a>
-      <a href="#technik">Technik</a>
-      <a href="https://codeberg.org/sascha8a/cits-to-go">Quellcode</a>
-    </nav>
-  </div>
-</header>
-
-<div class="layout">
-  <aside class="toc" aria-label="Inhalt">
-    <p>Inhalt</p>
-    <ol>
-      <li><a href="#ueberblick">Überblick</a></li>
-      <li><a href="#einrichtung">Einrichtung</a></li>
-      <li><a href="#nutzung">Nutzung</a></li>
-      <li><a href="#weiterleitung">Datenweiterleitung</a></li>
-      <li><a href="#probleme">Fehlerbehebung</a></li>
-      <li><a href="#technik">Technische Details</a></li>
-      <li><a href="#lizenz">Quellen und Lizenz</a></li>
-    </ol>
-  </aside>
-
-  <article>
-    <section id="ueberblick">
-      <h1>CITS-to-go</h1>
-      <p class="intro">Ein mobiler Empfänger für C&#8209;ITS-Nachrichten im 5,9-GHz-Band (ITS-G5). Ein ESP32&#8209;C5 empfängt die Funkpakete von Ampeln und Fahrzeugen und überträgt sie per Bluetooth an ein iPhone, das sie dekodiert, anzeigt und auf Wunsch weiterleitet.</p>
-      <p>Zum Flashen: <a href="flash.html">Firmware flashen</a>. Diese Seite beschreibt Einrichtung, Nutzung und technische Details.</p>
-      <table>
-        <tbody>
-          <tr><th scope="row">Hardware</th><td>Seeed Studio XIAO ESP32&#8209;C5</td></tr>
-          <tr><th scope="row">Empfang</th><td>ITS-G5, Kontrollkanal 5900&nbsp;MHz (Kanal 180)</td></tr>
-          <tr><th scope="row">Nachrichten</th><td>CAM, DENM, SPATEM, MAPEM, IVIM, CPM, SREM/SSEM; signiert und unsigniert</td></tr>
-          <tr><th scope="row">Verbindung zum Telefon</th><td>Bluetooth LE, verschlüsselt, Kopplung per Code</td></tr>
-          <tr><th scope="row">Apps</th><td>iOS 17 oder neuer (TestFlight), Android (Original-App)</td></tr>
-          <tr><th scope="row">Firmware</th><td>CITS-to-go v2.43.0 (Kopplung per Code, Status-LED)</td></tr>
-          <tr><th scope="row">Status</th><td>Experimentell, nicht für sicherheitsrelevante Zwecke</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section id="einrichtung">
-      <h2>Einrichtung</h2>
-      <ol>
-        <li>Firmware im Browser flashen: <a href="flash.html">Firmware flashen</a> (Chrome oder Edge, USB&#8209;C-Datenkabel).</li>
-        <li>iOS-App über TestFlight installieren: <a href="mailto:mail@dirkreich.com?subject=CITS-to-go%20TestFlight-Zugang">Zugang anfragen</a>. Android: <a href="https://codeberg.org/sascha8a/cits-to-go/releases">APK</a>.</li>
-        <li>In der App auf <em>Verbinden</em> tippen und den Code <strong>666666</strong> eingeben.</li>
-      </ol>
-      <p>Danach verbindet sich die App selbstständig, auch im Hintergrund. Es ist immer nur ein Telefon gleichzeitig verbunden.</p>
-    </section>
-
-    <section id="nutzung">
-      <h2>Nutzung</h2>
-      <div class="figure">
-        <img src="img/screenshot-kreuzung.png" alt="Kreuzungsansicht der iOS-App mit nach Signalphase eingefärbten Spuren und Restzeiten" width="400" height="870" loading="lazy">
-        <div>
-          <p>Der Empfänger benötigt nur eine Stromversorgung über USB, etwa eine Powerbank oder ein Kfz-Ladegerät. Die App besteht aus fünf Bereichen:</p>
-          <table>
-            <tbody>
-              <tr><th scope="row">Live</th><td>Empfangene Nachrichten im Klartext: Fahrzeugtyp und Geschwindigkeit (CAM), Warnungen wie Stau, Panne oder Baustelle (DENM), dazu Rohdaten</td></tr>
-              <tr><th scope="row">Kreuzungen</th><td>MAPEM-Geometrie mit SPATEM-Phasen: <span class="phase" style="background:var(--green)"></span>frei, <span class="phase" style="background:var(--amber)"></span>Übergang, <span class="phase" style="background:var(--red)"></span>Halt, mit Restzeit</td></tr>
-              <tr><th scope="row">Karte</th><td>Sender an ihrer GeoNetworking-Position</td></tr>
-              <tr><th scope="row">Aufnahmen</th><td>PCAP-Mitschnitte für Wireshark; vorhandene Mitschnitte lassen sich in der App abspielen</td></tr>
-              <tr><th scope="row">Einstellungen</th><td>Weiterleitung, Diagnoseprotokoll, Demo-Kreuzung</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <p>Fahrzeuge mit Car2X senden CAM-Nachrichten und sind nahezu überall zu empfangen. SPATEM und MAPEM gibt es nur an ausgestatteten Lichtsignalanlagen, DENM nur bei konkreten Ereignissen.</p>
-    </section>
-
-    <section id="weiterleitung">
-      <h2>Datenweiterleitung</h2>
-      <p>Die App leitet empfangene Pakete per MQTT an den gemeinsamen Server <code>mqtt.dirksreich.de</code> weiter; alle Empfänger erscheinen dann auf der <a href="live.html">Live-Seite</a>. Zusätzlich lässt sich OpenTrafficMap oder ein eigener Broker einschalten. Beide Ziele sind in den Einstellungen einzeln abschaltbar. Übertragen werden die empfangenen Funkpakete, nicht die Position des Telefons. Das Format entspricht dem Empfänger von <a href="https://opentrafficmap.org">OpenTrafficMap</a>:</p>
-      <table>
-        <thead><tr><th>Topic</th><th>Inhalt</th></tr></thead>
-        <tbody>
-          <tr><td><code>its/&lt;node&gt;/packet</code></td><td>Rohes IEEE-802.11-Frame, binär, QoS 0</td></tr>
-          <tr><td><code>its/&lt;node&gt;/status</code></td><td><code>online</code> (retained), Last Will <code>offline</code></td></tr>
-          <tr><td><code>its/&lt;node&gt;/info</code></td><td>JSON mit Node-Kennung, App-Version und Hardware</td></tr>
-          <tr><td><code>its/&lt;node&gt;/stats</code></td><td>JSON mit Laufzeit in Sekunden, einmal pro Minute</td></tr>
-        </tbody>
-      </table>
-      <p>Ohne Verbindung puffert die App bis zu 5000 Pakete und sendet sie nach dem Wiederverbinden.</p>
-    </section>
-
-    <section id="probleme">
-      <h2>Fehlerbehebung</h2>
-      <table>
-        <thead><tr><th>Symptom</th><th>Abhilfe</th></tr></thead>
-        <tbody>
-          <tr><td>Kein Gerät beim Flashen</td><td>Datenkabel verwenden, BOOT-Taste beim Einstecken halten, andere Programme mit Zugriff auf den Port schließen</td></tr>
-          <tr><td>Kein Code-Fenster, App verbindet nicht</td><td>Gerät in iOS unter Einstellungen › Bluetooth ignorieren, in der App „Gespeicherten Empfänger vergessen“, erneut verbinden</td></tr>
-          <tr><td>Code falsch oder vergessen</td><td>Ab Werk 666666; ein geänderter Code bleibt auch nach dem Neu-Flashen erhalten</td></tr>
-          <tr><td>Nur CAM, keine Ampeldaten</td><td>Normal abseits ausgestatteter Kreuzungen</td></tr>
-        </tbody>
-      </table>
-      <p>Die App schreibt ein Diagnoseprotokoll nach <code>diagnostics.log</code>, erreichbar in der Dateien-App unter „Auf meinem iPhone › CITS-to-go“.</p>
-    </section>
-
-    <section id="technik">
-      <h2>Technische Details</h2>
-      <h3>Bluetooth</h3>
-      <table>
-        <tbody>
-          <tr><th scope="row">Service</th><td class="mono">6e400001-b5a3-f393-e0a9-e50e24dcca9e</td></tr>
-          <tr><th scope="row">RX (Schreiben)</th><td><span class="mono">6e400002-…</span>, Verschlüsselung erforderlich</td></tr>
-          <tr><th scope="row">TX (Notify)</th><td><span class="mono">6e400003-…</span></td></tr>
-          <tr><th scope="row">Sicherheit</th><td>LE Secure Connections mit Passkey (Code, ab Werk 666666), Bonding für bis zu 4 Telefone, eine Verbindung gleichzeitig</td></tr>
-        </tbody>
-      </table>
-      <h3>Datenformat</h3>
-      <p>USB und Bluetooth übertragen denselben Bytestrom aus CTG1-Datensätzen: COBS-kodiert, durch <code>0x00</code> getrennt, mit CRC-32 gesichert. Ein Capture-Datensatz enthält Sequenznummer, Zeitstempel, Frequenz, RSSI und das vollständige 802.11-Frame.</p>
-      <h3>Code ändern</h3>
-      <p>Ein CTG1-Datensatz vom Typ 7 mit dem neuen Code (32 Bit, little endian) setzt den Code, per USB oder über eine gekoppelte Bluetooth-Verbindung. Die Firmware antwortet mit Typ 8 (Status und aktiver Code) und speichert ihn dauerhaft. Bestehende Kopplungen bleiben gültig.</p>
-    </section>
-
-    <section id="lizenz">
-      <h2>Quellen und Lizenz</h2>
-      <p>Firmware und Android-App stammen aus <a href="https://codeberg.org/sascha8a/cits-to-go">cits-to-go</a> von sascha8a und stehen unter der GPL&#8209;3.0. Das Projekt baut auf der Arbeit von <a href="https://codeberg.org/opentrafficmap">OpenTrafficMap</a> auf. Die iOS-App ist eine Portierung für iPhone mit eigenem Bluetooth-Client, MAPEM/SPATEM-Decoder und Kreuzungsansicht.</p>
-      <p>Kein offizielles Angebot von OpenTrafficMap.</p>
-    </section>
-  </article>
-</div>
-
-<footer>
-  <div class="inner">
-    <p>iOS-App und diese Seite: Dirk Reich, <a href="mailto:mail@dirkreich.com">mail@dirkreich.com</a></p>
-  </div>
-</footer>
-
-<script type="module">
-  // Highlight the current section in the table of contents.
-  const links = [...document.querySelectorAll(".toc a")];
-  const byId = new Map(links.map((a) => [a.getAttribute("href").slice(1), a]));
-  const observer = new IntersectionObserver((entries) => {
-    for (const e of entries) if (e.isIntersecting) {
-      links.forEach((a) => a.classList.remove("active"));
-      byId.get(e.target.id)?.classList.add("active");
-    }
-  }, { rootMargin: "-20% 0px -70% 0px" });
-  document.querySelectorAll("article section[id]").forEach((s) => observer.observe(s));
-</script>
+<main>
+  <h1><img src="img/icon.png" alt="">CITS-to-go</h1>
+  <p class="sub">C&#8209;ITS-Empfänger mit ESP32&#8209;C5 und iPhone-App</p>
+  <ul>
+    <li><a href="flash.html">Firmware flashen</a></li>
+    <li><a href="live.html">Live</a></li>
+    <li><a href="stats.html">Statistik</a></li>
+    <li><a href="coverage.html">Empfangskarte</a></li>
+    <li><a href="mailto:mail@dirkreich.com?subject=CITS-to-go%20TestFlight-Zugang">iPhone-App (TestFlight)</a></li>
+    <li><a href="https://codeberg.org/sascha8a/cits-to-go">Quellcode</a></li>
+  </ul>
+  <p class="foot">Kopplungscode ab Werk: 666666</p>
+</main>
 </body>
 </html>
