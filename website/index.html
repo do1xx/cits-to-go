@@ -4,13 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CITS-to-go – Dokumentation und Webflasher</title>
-<meta name="description" content="C-ITS-Empfänger auf Basis des ESP32-C5 mit iOS-App: Firmware im Browser flashen, iPhone koppeln, Nutzung und technische Details.">
+<meta name="description" content="C-ITS-Empfänger auf Basis des ESP32-C5 mit iOS-App: Firmware im Browser flashen, mit Code koppeln, Nutzung und technische Details.">
 <link rel="icon" href="img/icon.png">
 <link rel="apple-touch-icon" href="img/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
-<script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10.4.0/dist/web/install-button.js"></script>
 <style>
   :root {
     --ink: #1f2428;
@@ -119,6 +118,7 @@
       <a href="live.html">Live</a>
       <a href="stats.html">Statistik</a>
       <a href="coverage.html">Empfangskarte</a>
+      <a href="flash.html">Flashen</a>
       <a href="#technik">Technik</a>
       <a href="https://codeberg.org/sascha8a/cits-to-go">Quellcode</a>
     </nav>
@@ -143,15 +143,15 @@
     <section id="ueberblick">
       <h1>CITS-to-go</h1>
       <p class="intro">Ein mobiler Empfänger für C&#8209;ITS-Nachrichten im 5,9-GHz-Band (ITS-G5). Ein ESP32&#8209;C5 empfängt die Funkpakete von Ampeln und Fahrzeugen und überträgt sie per Bluetooth an ein iPhone, das sie dekodiert, anzeigt und auf Wunsch weiterleitet.</p>
-      <p>Diese Seite enthält die Firmware mit Webflasher, die Einrichtung des iPhones und die technischen Details.</p>
+      <p>Zum Flashen: <a href="flash.html">Firmware flashen</a>. Diese Seite beschreibt Einrichtung, Nutzung und technische Details.</p>
       <table>
         <tbody>
           <tr><th scope="row">Hardware</th><td>Seeed Studio XIAO ESP32&#8209;C5</td></tr>
           <tr><th scope="row">Empfang</th><td>ITS-G5, Kontrollkanal 5900&nbsp;MHz (Kanal 180)</td></tr>
           <tr><th scope="row">Nachrichten</th><td>CAM, DENM, SPATEM, MAPEM, IVIM, CPM, SREM/SSEM; signiert und unsigniert</td></tr>
-          <tr><th scope="row">Verbindung zum Telefon</th><td>Bluetooth LE, verschlüsselt und gekoppelt</td></tr>
+          <tr><th scope="row">Verbindung zum Telefon</th><td>Bluetooth LE, verschlüsselt, Kopplung per Code</td></tr>
           <tr><th scope="row">Apps</th><td>iOS 17 oder neuer (TestFlight), Android (Original-App)</td></tr>
-          <tr><th scope="row">Firmware</th><td>CITS-to-go v2.42.3</td></tr>
+          <tr><th scope="row">Firmware</th><td>CITS-to-go v2.43.0 (Kopplung per Code, Status-LED)</td></tr>
           <tr><th scope="row">Status</th><td>Experimentell, nicht für sicherheitsrelevante Zwecke</td></tr>
         </tbody>
       </table>
@@ -159,55 +159,12 @@
 
     <section id="einrichtung">
       <h2>Einrichtung</h2>
-      <p>Die Einrichtung erfolgt einmalig an einem Computer mit Chrome oder Edge und einem USB&#8209;C-Datenkabel. Danach arbeitet der Empfänger nur noch mit dem Telefon und einer Stromquelle.</p>
-      <div class="note" id="no-serial" hidden>Dieser Browser unterstützt keinen Zugriff auf USB-Geräte (Web Serial). Für Schritt 1 und 3 die Seite am Computer in Chrome oder Edge öffnen.</div>
-
-      <div class="step" id="step-flash" data-n="1">
-        <h3>Firmware flashen</h3>
-        <p>Den ESP32&#8209;C5 per USB anschließen, den Knopf verwenden und im Auswahlfenster das Gerät „USB JTAG/serial debug unit“ wählen. Der Vorgang dauert etwa eine Minute.</p>
-        <div class="tool">
-          <div class="row">
-            <esp-web-install-button manifest="firmware/manifest.json">
-              <button slot="activate" class="btn">Firmware installieren</button>
-              <span slot="unsupported"><button class="btn" disabled>Erfordert Chrome oder Edge</button></span>
-              <span slot="not-allowed"><button class="btn" disabled>Erfordert HTTPS</button></span>
-            </esp-web-install-button>
-            <span class="meta">Version 2.42.3, 1,1&nbsp;MB (<a href="firmware/CITS-to-go-firmware-v2.42.3.bin">Datei herunterladen</a>)</span>
-          </div>
-          <p class="meta" style="margin:0.8rem 0 0">SHA&#8209;256 <span class="mono">9e51dab3…07757a736</span>. Erscheint kein Gerät: BOOT-Taste beim Einstecken gedrückt halten.</p>
-        </div>
-        <label class="check"><input type="checkbox" id="flash-done"> Erledigt</label>
-      </div>
-
-      <div class="step" id="step-app" data-n="2">
-        <h3>App installieren</h3>
-        <p>Die iOS-App befindet sich im Test und wird über Apple TestFlight verteilt. Nach Annahme der Einladung wird sie in der TestFlight-App installiert. Beim ersten Start den Bluetooth-Zugriff erlauben.</p>
-        <div class="tool">
-          <div class="row">
-            <a class="btn" href="mailto:mail@dirkreich.com?subject=CITS-to-go%20TestFlight-Zugang">TestFlight-Zugang anfragen</a>
-            <a class="btn secondary" href="https://codeberg.org/sascha8a/cits-to-go/releases">Android-APK</a>
-          </div>
-        </div>
-        <label class="check"><input type="checkbox" id="app-done"> Erledigt</label>
-      </div>
-
-      <div class="step" id="step-pair" data-n="3">
-        <h3>iPhone koppeln</h3>
-        <p>Die Firmware akzeptiert per Bluetooth nur ein gespeichertes Telefon. Ein neues Telefon wird nur angenommen, nachdem die Kopplung über USB freigegeben wurde. Das verhindert, dass fremde Geräte in Funkreichweite den Empfänger nutzen.</p>
-        <ol>
-          <li>Den ESP am Computer angeschlossen lassen und die App öffnen.</li>
-          <li>„Kopplung freigeben“ wählen und den ESP auswählen.</li>
-          <li>Innerhalb von 30 Sekunden in der App auf <em>Verbinden</em> tippen und die iOS-Abfrage <em>Koppeln</em> bestätigen.</li>
-        </ol>
-        <div class="tool">
-          <div class="row">
-            <button class="btn" id="pair-btn">Kopplung freigeben</button>
-            <span class="meta">Ersetzt ein zuvor gekoppeltes Telefon.</span>
-          </div>
-          <p class="status" id="pair-status" role="status" aria-live="polite"></p>
-        </div>
-        <p class="meta">Danach verbindet sich die App selbstständig, auch im Hintergrund. Nach einem erneuten Flashen das Gerät zuvor in den iOS-Einstellungen unter Bluetooth ignorieren.</p>
-      </div>
+      <ol>
+        <li>Firmware im Browser flashen: <a href="flash.html">Firmware flashen</a> (Chrome oder Edge, USB&#8209;C-Datenkabel).</li>
+        <li>iOS-App über TestFlight installieren: <a href="mailto:mail@dirkreich.com?subject=CITS-to-go%20TestFlight-Zugang">Zugang anfragen</a>. Android: <a href="https://codeberg.org/sascha8a/cits-to-go/releases">APK</a>.</li>
+        <li>In der App auf <em>Verbinden</em> tippen und den Code <strong>666666</strong> eingeben.</li>
+      </ol>
+      <p>Danach verbindet sich die App selbstständig, auch im Hintergrund. Es ist immer nur ein Telefon gleichzeitig verbunden.</p>
     </section>
 
     <section id="nutzung">
@@ -251,10 +208,8 @@
         <thead><tr><th>Symptom</th><th>Abhilfe</th></tr></thead>
         <tbody>
           <tr><td>Kein Gerät beim Flashen</td><td>Datenkabel verwenden, BOOT-Taste beim Einstecken halten, andere Programme mit Zugriff auf den Port schließen</td></tr>
-          <tr><td>„Gerät belegt“ beim Koppeln</td><td>Flash-Dialog schließen oder Seite neu laden</td></tr>
-          <tr><td>„Keine Antwort“ beim Koppeln</td><td>Es läuft noch keine CITS-to-go-Firmware: Schritt 1 wiederholen</td></tr>
-          <tr><td>App meldet „Nicht angelernt“</td><td>Kopplung in Schritt 3 erneut freigeben</td></tr>
-          <tr><td>Kopplung schlägt nach Neu-Flashen fehl</td><td>Gerät in iOS unter Einstellungen › Bluetooth ignorieren, dann Schritt 3</td></tr>
+          <tr><td>Kein Code-Fenster, App verbindet nicht</td><td>Gerät in iOS unter Einstellungen › Bluetooth ignorieren, in der App „Gespeicherten Empfänger vergessen“, erneut verbinden</td></tr>
+          <tr><td>Code falsch oder vergessen</td><td>Ab Werk 666666; ein geänderter Code bleibt auch nach dem Neu-Flashen erhalten</td></tr>
           <tr><td>Nur CAM, keine Ampeldaten</td><td>Normal abseits ausgestatteter Kreuzungen</td></tr>
         </tbody>
       </table>
@@ -269,17 +224,13 @@
           <tr><th scope="row">Service</th><td class="mono">6e400001-b5a3-f393-e0a9-e50e24dcca9e</td></tr>
           <tr><th scope="row">RX (Schreiben)</th><td><span class="mono">6e400002-…</span>, Verschlüsselung erforderlich</td></tr>
           <tr><th scope="row">TX (Notify)</th><td><span class="mono">6e400003-…</span></td></tr>
-          <tr><th scope="row">Sicherheit</th><td>LE Secure Connections, Just Works, Bonding; ein Besitzer</td></tr>
+          <tr><th scope="row">Sicherheit</th><td>LE Secure Connections mit Passkey (Code, ab Werk 666666), Bonding für bis zu 4 Telefone, eine Verbindung gleichzeitig</td></tr>
         </tbody>
       </table>
       <h3>Datenformat</h3>
       <p>USB und Bluetooth übertragen denselben Bytestrom aus CTG1-Datensätzen: COBS-kodiert, durch <code>0x00</code> getrennt, mit CRC-32 gesichert. Ein Capture-Datensatz enthält Sequenznummer, Zeitstempel, Frequenz, RSSI und das vollständige 802.11-Frame.</p>
-      <h3>Kopplung freigeben</h3>
-      <p>Die Freigabe ist ein CTG1-Datensatz vom Typ 4 über USB. Die Firmware bestätigt mit Typ 5 und akzeptiert danach 30 Sekunden lang genau ein neues Telefon. Der Knopf in Schritt 3 sendet über Web Serial:</p>
-      <pre>08 43 54 47 31 01 04 0c 02 01 01 01 05 12 46 f8 46 00</pre>
-      <p>Alternativ per Kommandozeile:</p>
-      <pre>esptool --chip esp32c5 write-flash 0x0 CITS-to-go-firmware-v2.42.3.bin
-python3 arm_enrollment.py</pre>
+      <h3>Code ändern</h3>
+      <p>Ein CTG1-Datensatz vom Typ 7 mit dem neuen Code (32 Bit, little endian) setzt den Code, per USB oder über eine gekoppelte Bluetooth-Verbindung. Die Firmware antwortet mit Typ 8 (Status und aktiver Code) und speichert ihn dauerhaft. Bestehende Kopplungen bleiben gültig.</p>
     </section>
 
     <section id="lizenz">
@@ -297,23 +248,6 @@ python3 arm_enrollment.py</pre>
 </footer>
 
 <script type="module">
-  import { armEnrollment } from "./enroll.js";
-
-  const hasSerial = "serial" in navigator;
-  document.getElementById("no-serial").hidden = hasSerial;
-
-  // Completed steps turn green (remembered per browser).
-  const mark = (id, done) => document.getElementById(id).classList.toggle("done", done);
-  for (const [box, step] of [["flash-done", "step-flash"], ["app-done", "step-app"]]) {
-    const el = document.getElementById(box);
-    try { el.checked = localStorage.getItem(box) === "1"; } catch {}
-    mark(step, el.checked);
-    el.addEventListener("change", () => {
-      mark(step, el.checked);
-      try { localStorage.setItem(box, el.checked ? "1" : "0"); } catch {}
-    });
-  }
-
   // Highlight the current section in the table of contents.
   const links = [...document.querySelectorAll(".toc a")];
   const byId = new Map(links.map((a) => [a.getAttribute("href").slice(1), a]));
@@ -324,48 +258,6 @@ python3 arm_enrollment.py</pre>
     }
   }, { rootMargin: "-20% 0px -70% 0px" });
   document.querySelectorAll("article section[id]").forEach((s) => observer.observe(s));
-
-  // Pairing via Web Serial.
-  const btn = document.getElementById("pair-btn");
-  const status = document.getElementById("pair-status");
-  if (!hasSerial) { btn.disabled = true; btn.textContent = "Erfordert Chrome oder Edge"; }
-  const messages = {
-    cancelled: "Kein Gerät ausgewählt.",
-    busy: "Das Gerät ist von einem anderen Programm belegt. Flash-Dialog schließen oder Seite neu laden.",
-    noreply: "Keine Antwort vom Gerät. Läuft die CITS-to-go-Firmware? Gegebenenfalls Schritt 1 wiederholen.",
-    refused: "Das Gerät hat die Freigabe abgelehnt. Kurz trennen, wieder anschließen und erneut versuchen.",
-    unsupported: "Dieser Browser unterstützt kein Web Serial.",
-  };
-  let timer;
-  btn.addEventListener("click", async () => {
-    clearInterval(timer);
-    btn.disabled = true;
-    status.className = "status wait";
-    status.textContent = "Verbinde …";
-    try {
-      await armEnrollment();
-      mark("step-pair", true);
-      let secs = 30;
-      const tick = () => {
-        if (secs < 0) {
-          clearInterval(timer);
-          status.className = "status";
-          status.textContent = "Freigabe abgelaufen. Zeigt die App „Verbunden“, ist die Kopplung abgeschlossen.";
-          btn.disabled = false;
-          return;
-        }
-        status.className = "status ok";
-        status.innerHTML = `Kopplung freigegeben. Jetzt in der App auf „Verbinden“ tippen – <span class="timer">${secs}</span>&nbsp;s.`;
-        secs--;
-      };
-      tick();
-      timer = setInterval(tick, 1000);
-    } catch (e) {
-      status.className = "status err";
-      status.textContent = messages[e.kind] || `Fehler: ${e.message}`;
-      btn.disabled = false;
-    }
-  });
 </script>
 </body>
 </html>

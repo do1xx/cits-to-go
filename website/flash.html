@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CITS-to-go – Firmware flashen</title>
+<meta name="description" content="CITS-to-go-Firmware im Browser auf den ESP32-C5 flashen und mit dem Code 666666 mit der App koppeln.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10.4.0/dist/web/install-button.js"></script>
+<style>
+  :root {
+    --ink: #1f2428; --muted: #5d6770; --rule: #dfe3e6; --bg: #ffffff;
+    --accent: #0b4f8a; --amber: #b77f00;
+    --mono: "Overpass Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1.05rem; line-height: 1.55; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); text-underline-offset: 0.18em; }
+  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; }
+  main { max-width: 34rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+  .logo { display: inline-flex; align-items: center; gap: 0.55rem; font-weight: 800; color: var(--ink); text-decoration: none; white-space: nowrap; }
+  .logo img { width: 1.7rem; height: 1.7rem; border-radius: 0.4rem; }
+  h1 { font-size: 2rem; font-weight: 800; margin: 1.5rem 0 2rem; line-height: 1.15; }
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
+  ol.steps > li { counter-increment: step; position: relative; padding: 0 0 2rem 3rem; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: -0.1rem;
+    width: 2rem; height: 2rem; border-radius: 50%; background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-weight: 800;
+  }
+  ol.steps p { margin: 0 0 0.6rem; }
+  .btn { font: inherit; font-weight: 700; border: 0; border-radius: 0.5rem; padding: 0.75rem 1.4rem; background: var(--accent); color: #fff; cursor: pointer; }
+  .btn:disabled { background: #9aa5ae; cursor: not-allowed; }
+  .code { font-family: var(--mono); font-weight: 600; font-size: 1.6rem; letter-spacing: 0.12em; }
+  .muted { color: var(--muted); font-size: 0.93rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; margin-top: 0.4rem; }
+  td { padding: 0.35rem 0.8rem 0.35rem 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  td:first-child { white-space: nowrap; color: var(--muted); }
+  details { margin-top: 2.5rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
+  summary { cursor: pointer; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="./"><img src="img/icon.png" alt="">CITS-to-go</a>
+  <h1>Firmware flashen</h1>
+
+  <ol class="steps">
+    <li>
+      <p>ESP32&#8209;C5 per USB&#8209;C-Datenkabel an den Computer anschließen. Chrome oder Edge verwenden.</p>
+    </li>
+    <li>
+      <p>
+        <esp-web-install-button manifest="firmware/manifest.json">
+          <button slot="activate" class="btn">Firmware installieren</button>
+          <span slot="unsupported"><button class="btn" disabled>Nur mit Chrome oder Edge</button></span>
+          <span slot="not-allowed"><button class="btn" disabled>Nur über HTTPS</button></span>
+        </esp-web-install-button>
+      </p>
+      <p class="muted">Im Fenster „USB JTAG/serial debug unit“ wählen. Dauert etwa eine Minute. Wird kein Gerät angezeigt, beim Einstecken die BOOT-Taste halten.</p>
+    </li>
+    <li>
+      <p>In der App auf <strong>Verbinden</strong> tippen und diesen Code eingeben:</p>
+      <p class="code">666666</p>
+      <p class="muted">Den Code kann man danach in der App unter Einstellungen ändern.</p>
+    </li>
+  </ol>
+
+  <details>
+    <summary>Was die LED anzeigt</summary>
+    <table>
+      <tr><td>Blitz alle 2 s</td><td>läuft, keine App verbunden</td></tr>
+      <tr><td>Dauerlicht</td><td>App verbunden</td></tr>
+      <tr><td>kurze Aussetzer</td><td>Nachricht empfangen</td></tr>
+      <tr><td>langer Impuls</td><td>Nachricht gesendet</td></tr>
+      <tr><td>kein Blinken</td><td>hängt: kurz vom Strom trennen</td></tr>
+    </table>
+  </details>
+
+  <p class="muted" style="margin-top:2rem">Firmware 2.43.0 (<a href="firmware/CITS-to-go-firmware-v2.43.0.bin">Datei</a>). App und weitere Infos in der <a href="./">Dokumentation</a>.</p>
+</main>
+</body>
+</html>
