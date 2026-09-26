@@ -1,4 +1,5 @@
 import CoreLocation
+import MapKit
 import SceneKit
 import SwiftUI
 import UIKit
@@ -9,18 +10,24 @@ struct Scene3DView: View {
     @Environment(BridgeModel.self) private var model
     @Environment(LocationProvider.self) private var location
     @State private var topDown = false
+    @AppStorage("scene3d.showMap") private var showMap = true
     @State private var selected: StationSelection?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
             let snap = snapshot(now: context.date)
             ZStack(alignment: .bottom) {
-                SceneKitContainer(snapshot: snap, topDown: topDown) { selected = StationSelection(id: $0) }
+                SceneKitContainer(snapshot: snap, topDown: topDown, showMap: showMap) { selected = StationSelection(id: $0) }
                     .ignoresSafeArea(edges: .top)
                 HStack {
                     Text(snap.caption).font(.caption).padding(.horizontal, 10).padding(.vertical, 6)
                         .background(.ultraThinMaterial, in: Capsule())
                     Spacer()
+                    Button { showMap.toggle() } label: {
+                        Image(systemName: showMap ? "map.fill" : "map")
+                            .padding(10).background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(showMap ? "Karte ausblenden" : "Karte einblenden")
                     Button { topDown.toggle() } label: {
                         Image(systemName: topDown ? "view.3d" : "square.grid.3x3.topleft.filled")
                             .padding(10).background(.ultraThinMaterial, in: Circle())
@@ -58,6 +65,7 @@ struct Scene3DView: View {
         var egoHeading: Float = 0      // direction the camera looks (degrees)
         var extent: Float = 40          // distance to the farthest body (m), sizes the camera
         var hasEgo = false
+        var origin: CLLocationCoordinate2D?  // geographic position of scene (0, 0)
         var caption = ""
     }
 
@@ -76,6 +84,7 @@ struct Scene3DView: View {
             s.caption = "Noch keine Stationen mit Position"
             return s
         }
+        s.origin = origin
         let mPerDegLat = 111_320.0, mPerDegLon = 111_320.0 * cos(origin.latitude * .pi / 180)
         func local(_ c: CLLocationCoordinate2D) -> (Float, Float) {
             (Float((c.longitude - origin.longitude) * mPerDegLon), Float(-(c.latitude - origin.latitude) * mPerDegLat))
@@ -121,6 +130,7 @@ struct Scene3DView: View {
 private struct SceneKitContainer: UIViewRepresentable {
     let snapshot: Scene3DView.Snapshot3D
     let topDown: Bool
+    let showMap: Bool
     let onSelect: (UInt32) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onSelect: onSelect) }
@@ -138,6 +148,7 @@ private struct SceneKitContainer: UIViewRepresentable {
     func updateUIView(_ view: SCNView, context: Context) {
         context.coordinator.onSelect = onSelect
         context.coordinator.update(snapshot, topDown: topDown)
+        context.coordinator.updateGroundMap(origin: snapshot.origin, visible: showMap)
     }
 
     @MainActor
@@ -148,6 +159,11 @@ private struct SceneKitContainer: UIViewRepresentable {
         private let laneRoot = SCNNode()
         private var bodies: [UInt32: SCNNode] = [:]
         private var lastLanes: [Scene3DView.Lane3D] = []
+        private let groundMap = SCNNode()
+        private var mapCenter: CLLocationCoordinate2D?
+        private var mapLoading = false
+        private var mapLastAttempt = Date.distantPast
+        private static let mapSize: Double = 2_000       // metres per side of the map texture
         var onSelect: (UInt32) -> Void
 
         init(onSelect: @escaping (UInt32) -> Void) {
@@ -156,7 +172,20 @@ private struct SceneKitContainer: UIViewRepresentable {
             let floor = SCNFloor()
             floor.reflectivity = 0
             floor.firstMaterial?.diffuse.contents = UIColor(red: 0.13, green: 0.14, blue: 0.16, alpha: 1)
-            scene.rootNode.addChildNode(SCNNode(geometry: floor))
+            floor.firstMaterial?.writesToDepthBuffer = false
+            let floorNode = SCNNode(geometry: floor)
+            floorNode.renderingOrder = -2
+            scene.rootNode.addChildNode(floorNode)
+            // Street map under the scene; drawn right after the floor and without depth so lanes and rings stay on top.
+            let plane = SCNPlane(width: Self.mapSize, height: Self.mapSize)
+            plane.firstMaterial?.lightingModel = .constant
+            plane.firstMaterial?.writesToDepthBuffer = false
+            plane.firstMaterial?.diffuse.contents = UIColor.clear
+            groundMap.geometry = plane
+            groundMap.eulerAngles.x = -.pi / 2             // texture top points north (-z)
+            groundMap.renderingOrder = -1
+            groundMap.isHidden = true
+            scene.rootNode.addChildNode(groundMap)
             let ambient = SCNNode(); ambient.light = SCNLight(); ambient.light?.type = .ambient; ambient.light?.intensity = 500
             let sun = SCNNode(); sun.light = SCNLight(); sun.light?.type = .directional; sun.light?.intensity = 800
             sun.eulerAngles = SCNVector3(-Float.pi / 3, Float.pi / 4, 0)
@@ -232,6 +261,37 @@ private struct SceneKitContainer: UIViewRepresentable {
                 lastLanes = s.lanes
                 laneRoot.childNodes.forEach { $0.removeFromParentNode() }
                 for lane in s.lanes { for n in Self.laneSegments(lane) { laneRoot.addChildNode(n) } }
+            }
+        }
+
+        /// Keeps a dark Apple Maps snapshot under the scene. Re-rendered when the origin moves
+        /// more than a quarter of the texture away from its centre; failed loads retry after 30 s.
+        func updateGroundMap(origin: CLLocationCoordinate2D?, visible: Bool) {
+            guard visible, let origin else { groundMap.isHidden = true; return }
+            if let c = mapCenter {
+                let dx = (c.longitude - origin.longitude) * 111_320 * cos(origin.latitude * .pi / 180)
+                let dz = -(c.latitude - origin.latitude) * 111_320
+                groundMap.position = SCNVector3(Float(dx), 0.01, Float(dz))
+                groundMap.isHidden = false
+                if (dx * dx + dz * dz).squareRoot() < Self.mapSize / 4 { return }
+            }
+            guard !mapLoading, Date().timeIntervalSince(mapLastAttempt) > 30 else { return }
+            mapLoading = true
+            mapLastAttempt = Date()
+            let options = MKMapSnapshotter.Options()
+            options.region = MKCoordinateRegion(center: origin, latitudinalMeters: Self.mapSize, longitudinalMeters: Self.mapSize)
+            options.size = CGSize(width: 2_048, height: 2_048)
+            options.scale = 1
+            options.mapType = .mutedStandard
+            options.pointOfInterestFilter = .excludingAll
+            options.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+            Task { @MainActor in
+                defer { mapLoading = false }
+                guard let shot = try? await MKMapSnapshotter(options: options).start() else { return }
+                groundMap.geometry?.firstMaterial?.diffuse.contents = shot.image
+                groundMap.geometry?.firstMaterial?.multiply.contents = UIColor(white: 0.8, alpha: 1)
+                mapCenter = origin
+                updateGroundMap(origin: origin, visible: true)
             }
         }
 
