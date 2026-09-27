@@ -28,6 +28,9 @@ final class WarningNotifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func requestPermission() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-no-permission-prompts") { return }   // simulator screenshots
+        #endif
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             Task { @MainActor in self.authorized = granted }
         }

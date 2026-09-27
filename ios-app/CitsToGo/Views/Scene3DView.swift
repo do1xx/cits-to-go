@@ -11,18 +11,26 @@ struct Scene3DView: View {
     @Environment(LocationProvider.self) private var location
     @State private var topDown = false
     @State private var selected: StationSelection?
+    @State private var recenter = 0
+    @State private var following = true
     @AppStorage("scene3d.buildings") private var showBuildings = true
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
             let snap = snapshot(now: context.date)
             ZStack(alignment: .bottom) {
-                MapLibre3DContainer(snapshot: snap, topDown: topDown, showBuildings: showBuildings) { selected = StationSelection(id: $0) }
+                MapLibre3DContainer(snapshot: snap, topDown: topDown, showBuildings: showBuildings, recenterToken: recenter,
+                                    onFollowingChange: { following = $0 }) { selected = StationSelection(id: $0) }
                     .ignoresSafeArea(edges: .top)
                 HStack {
                     Text(snap.caption).font(.caption).padding(.horizontal, 10).padding(.vertical, 6)
                         .background(.ultraThinMaterial, in: Capsule())
                     Spacer()
+                    Button { recenter += 1 } label: {
+                        Image(systemName: following ? "location.north.line.fill" : "location")
+                            .padding(10).background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(following ? "Folgt deiner Position" : "Auf mich zentrieren")
                     Button { showBuildings.toggle() } label: {
                         Image(systemName: showBuildings ? "building.2.fill" : "building.2")
                             .padding(10).background(.ultraThinMaterial, in: Circle())
@@ -162,6 +170,8 @@ private struct MapLibre3DContainer: UIViewRepresentable {
     let snapshot: Scene3DView.Snapshot3D
     let topDown: Bool
     let showBuildings: Bool
+    let recenterToken: Int
+    let onFollowingChange: (Bool) -> Void
     let onSelect: (UInt32) -> Void
 
     static let styleURL = URL(string: "https://tiles.openfreemap.org/styles/liberty")!
@@ -184,6 +194,8 @@ private struct MapLibre3DContainer: UIViewRepresentable {
 
     func updateUIView(_ view: MLNMapView, context: Context) {
         context.coordinator.onSelect = onSelect
+        context.coordinator.onFollowingChange = onFollowingChange
+        context.coordinator.recenter(token: recenterToken)
         context.coordinator.update(snapshot, topDown: topDown, showBuildings: showBuildings)
     }
 
@@ -191,6 +203,9 @@ private struct MapLibre3DContainer: UIViewRepresentable {
     final class Coordinator: NSObject, MLNMapViewDelegate {
         weak var mapView: MLNMapView?
         var onSelect: (UInt32) -> Void
+        var onFollowingChange: ((Bool) -> Void)?
+        private var recenterToken = 0
+        private var reportedFollowing: Bool?
         private var style: MLNStyle?
         private let vehicles = MLNShapeSource(identifier: "cits-vehicles", shape: nil)
         private let labels = MLNShapeSource(identifier: "cits-labels", shape: nil)
@@ -206,6 +221,30 @@ private struct MapLibre3DContainer: UIViewRepresentable {
         private var triedFallback = false
 
         init(onSelect: @escaping (UInt32) -> Void) { self.onSelect = onSelect }
+
+        /// Standort-Knopf: snap back to following the own position immediately.
+        func recenter(token: Int) {
+            guard token != recenterToken else { return }
+            recenterToken = token
+            lastUserGesture = .distantPast
+            lastTopDown = nil
+            lastCameraKey = ""
+        }
+
+        private func reportFollowing(_ value: Bool) {
+            guard value != reportedFollowing else { return }
+            reportedFollowing = value
+            let callback = onFollowingChange
+            DispatchQueue.main.async { callback?(value) }
+        }
+
+        // Own position: navigation arrow instead of the default dot.
+        nonisolated func mapView(_ mapView: MLNMapView, viewFor annotation: MLNAnnotation) -> MLNAnnotationView? {
+            MainActor.assumeIsolated {
+                guard annotation is MLNUserLocation else { return nil }
+                return mapView.dequeueReusableAnnotationView(withIdentifier: NavArrowView.reuseId) ?? NavArrowView(reuseIdentifier: NavArrowView.reuseId)
+            }
+        }
 
         // MARK: Style
 
@@ -268,14 +307,14 @@ private struct MapLibre3DContainer: UIViewRepresentable {
                 l.predicate = NSPredicate(format: "stale == %@", NSNumber(value: stale))
                 l.fillExtrusionColor = NSExpression(mglJSONObject: ["to-color", ["get", "color"]])
                 l.fillExtrusionHeight = NSExpression(forKeyPath: "height")
-                l.fillExtrusionBase = NSExpression(forConstantValue: 0)
-                l.fillExtrusionOpacity = NSExpression(forConstantValue: stale ? 0.35 : 0.95)
+                l.fillExtrusionBase = NSExpression(forKeyPath: "base")
+                l.fillExtrusionOpacity = NSExpression(forConstantValue: stale ? 0.45 : 1.0)
                 style.addLayer(l)
             }
             // Soft coloured glow under every vehicle so it stays visible when zoomed out.
             let glow = MLNCircleStyleLayer(identifier: "cits-glow", source: labels)
             glow.circleColor = NSExpression(mglJSONObject: ["to-color", ["get", "color"]])
-            glow.circleRadius = NSExpression(forConstantValue: 14)
+            glow.circleRadius = NSExpression(forConstantValue: 20)
             glow.circleBlur = NSExpression(forConstantValue: 0.7)
             glow.circleOpacity = NSExpression(forConstantValue: 0.55)
             glow.circlePitchAlignment = NSExpression(forConstantValue: "map")
@@ -283,7 +322,7 @@ private struct MapLibre3DContainer: UIViewRepresentable {
             let text = MLNSymbolStyleLayer(identifier: "cits-labels", source: labels)
             text.text = NSExpression(forKeyPath: "label")
             text.textFontNames = NSExpression(forConstantValue: ["Noto Sans Bold"])
-            text.textFontSize = NSExpression(forConstantValue: 12)
+            text.textFontSize = NSExpression(forConstantValue: 13)
             text.textColor = NSExpression(forConstantValue: UIColor(white: 0.12, alpha: 1))
             text.textHaloColor = NSExpression(forConstantValue: UIColor.white)
             text.textHaloWidth = NSExpression(forConstantValue: 1.6)
@@ -307,11 +346,11 @@ private struct MapLibre3DContainer: UIViewRepresentable {
 
             var bodies: [MLNShape & MLNFeature] = []
             var texts: [MLNShape & MLNFeature] = []
-            // Real size when zoomed in close; exaggerated up to 4x when zoomed out so vehicles stay visible.
-            let scale = min(max(pow(2, 17.3 - mapView.zoomLevel), 1), 4)
+            // Always drawn about twice real size so they read well on the phone; more when zoomed out.
+            let scale = min(max(pow(2, 18.4 - mapView.zoomLevel) * 1.9, 1.9), 6)
             for b in s.bodies {
                 let color = Self.color(for: b)
-                bodies.append(Self.arrow(at: b.coordinate, heading: b.heading ?? 0, type: b.type, color: color, stale: b.stale, id: b.id, scale: scale))
+                bodies += Self.vehicle(at: b.coordinate, heading: b.heading ?? 0, type: b.type, color: color, stale: b.stale, id: b.id, scale: scale)
                 let p = MLNPointFeature()
                 p.coordinate = b.coordinate
                 p.attributes = ["label": b.label, "color": color]
@@ -344,19 +383,21 @@ private struct MapLibre3DContainer: UIViewRepresentable {
 
         /// Like a car navigation system: MapLibre follows the GPS itself (smoothly interpolated),
         /// the map turns with the driving direction, the own arrow sits in the lower part of the
-        /// screen and the zoom depends on the speed. After a gesture it snaps back after 10 s.
+        /// screen and the zoom depends on the speed. After a gesture it snaps back after 15 s,
+        /// or at once with the Standort-Knopf.
         private func navigationCamera(_ mapView: MLNMapView, speedKmh: Double, topDown: Bool) {
             if !mapView.showsUserLocation {
                 mapView.locationManager.setDesiredAccuracy?(kCLLocationAccuracyBestForNavigation)
                 mapView.locationManager.setActivityType?(.automotiveNavigation)
+                mapView.showsUserHeadingIndicator = false
                 mapView.showsUserLocation = true
-                mapView.showsUserHeadingIndicator = true
             }
             let inset = topDown ? 0 : mapView.bounds.height * 0.38
             if abs(mapView.contentInset.top - inset) > 1 {
                 mapView.setContentInset(UIEdgeInsets(top: inset, left: 0, bottom: 0, right: 0), animated: true, completionHandler: nil)
             }
-            let idle = Date().timeIntervalSince(lastUserGesture) > 10
+            let idle = Date().timeIntervalSince(lastUserGesture) > 15
+            reportFollowing(mapView.userTrackingMode != .none)
             let wanted: MLNUserTrackingMode = topDown ? .follow : .followWithCourse
             if (mapView.userTrackingMode != wanted || lastTopDown != topDown) && idle {
                 lastTopDown = topDown
@@ -389,6 +430,7 @@ private struct MapLibre3DContainer: UIViewRepresentable {
                 mapView.showsUserLocation = false
                 mapView.setContentInset(.zero, animated: false, completionHandler: nil)
             }
+            reportFollowing(Date().timeIntervalSince(lastUserGesture) > 20)
             guard let center = s.center, Date().timeIntervalSince(lastUserGesture) > 20 else { return }
             let e = min(max(s.extent, 40), 600)
             let look = topDown ? center : Geo.local(center, heading: s.egoHeading, forward: e * 0.35, right: 0)
@@ -422,38 +464,69 @@ private struct MapLibre3DContainer: UIViewRepresentable {
             if b.emergency { return "#e5352b" }
             if b.warning { return "#f59e0b" }
             switch b.type {
-            case .passengerCar: return "#5b6570"
+            case .passengerCar: return "#2f3b4c"
             case .bus, .tram: return "#e8b400"
             case .lightTruck, .heavyTruck, .trailer: return "#f07c1b"
             case .cyclist, .pedestrian: return "#0fa3a3"
             case .moped, .motorcycle: return "#8b5cf6"
             case .roadSideUnit: return "#22b04b"
-            default: return "#8a94a0"
+            default: return "#5b6570"
             }
         }
 
-        /// Footprint with a pointed nose so the driving direction is visible from above, extruded to the vehicle height.
-        private static func arrow(at c: CLLocationCoordinate2D, heading: Double, type: StationType?, color: String, stale: Bool, id: UInt32, scale: Double) -> MLNShape & MLNFeature {
-            let (l0, w0, h0): (Double, Double, Double) = switch type {
-            case .pedestrian: (1.2, 1.2, 1.8)
-            case .cyclist: (2.2, 1.0, 1.7)
-            case .moped, .motorcycle: (2.4, 1.1, 1.4)
-            case .bus: (12, 2.55, 3.2)
-            case .tram: (30, 2.65, 3.4)
-            case .lightTruck: (6.5, 2.2, 2.8)
-            case .heavyTruck, .trailer: (16, 2.55, 3.8)
-            case .roadSideUnit: (1.2, 1.2, 6)
-            default: (4.6, 1.9, 1.5)
+        /// Simple low-poly vehicle from stacked extrusions: body, dark glass cabin set back from
+        /// the front (shows the driving direction) and headlights. `scale` enlarges it for legibility.
+        private static func vehicle(at c: CLLocationCoordinate2D, heading: Double, type: StationType?, color: String,
+                                    stale: Bool, id: UInt32, scale k: Double) -> [MLNShape & MLNFeature] {
+            let glass = "#0e1520", light = "#fff3c4"
+            func part(_ ring: [(Double, Double)], _ base: Double, _ top: Double, _ col: String) -> MLNShape & MLNFeature {
+                var pts = ring.map { Geo.local(c, heading: heading, forward: $0.0 * k, right: $0.1 * k) }
+                pts.append(pts[0])
+                let f = MLNPolygonFeature(coordinates: &pts, count: UInt(pts.count))
+                f.attributes = ["color": col, "base": base * k, "height": top * k, "stale": stale, "id": NSNumber(value: id)]
+                return f
             }
-            let (l, w, h) = (l0 * scale, w0 * scale, h0 * scale)
-            let ring: [(Double, Double)] = type == .roadSideUnit || type == .pedestrian
-                ? [(-l / 2, -w / 2), (-l / 2, w / 2), (l / 2, w / 2), (l / 2, -w / 2)]
-                : [(-l / 2, -w / 2), (-l / 2, w / 2), (l / 2 - w * 0.6, w / 2), (l / 2, 0), (l / 2 - w * 0.6, -w / 2)]
-            var pts = ring.map { Geo.local(c, heading: heading, forward: $0.0, right: $0.1) }
-            pts.append(pts[0])
-            let f = MLNPolygonFeature(coordinates: &pts, count: UInt(pts.count))
-            f.attributes = ["color": color, "height": h, "stale": stale, "id": NSNumber(value: id)]
-            return f
+            func rounded(_ l: Double, _ w: Double, r: Double, from: Double = 0) -> [(Double, Double)] {
+                // Rectangle from `from - l/2` to `from + l/2` (forward) and ±w/2 with corner radius r.
+                var ring: [(Double, Double)] = []
+                let corners = [(l / 2 - r, w / 2 - r, 0.0), (-l / 2 + r, w / 2 - r, 90.0), (-l / 2 + r, -w / 2 + r, 180.0), (l / 2 - r, -w / 2 + r, 270.0)]
+                for (cx, cy, start) in corners {
+                    for i in 0...4 {
+                        let a = (start + Double(i) * 22.5) * .pi / 180
+                        ring.append((from + cx + r * cos(a), cy + r * sin(a)))
+                    }
+                }
+                return ring
+            }
+            func octagon(_ d: Double) -> [(Double, Double)] {
+                (0..<8).map { i in let a = Double(i) * .pi / 4; return (d / 2 * cos(a), d / 2 * sin(a)) }
+            }
+            switch type {
+            case .pedestrian:
+                return [part(octagon(0.6), 0, 1.2, color), part(octagon(0.35), 1.2, 1.8, color)]
+            case .cyclist, .moped, .motorcycle:
+                let l = type == .cyclist ? 1.9 : 2.2
+                return [part(rounded(l, 0.5, r: 0.2), 0, 0.9, color), part(octagon(0.5), 0.9, 1.75, color)]
+            case .roadSideUnit:
+                return [part(octagon(0.35), 0, 5.2, "#6b7580"), part(rounded(0.9, 0.5, r: 0.1), 5.2, 6.2, color)]
+            case .bus, .tram:
+                let l = type == .tram ? 30.0 : 12.0, w = 2.55
+                return [part(rounded(l, w, r: 0.35), 0, 1.0, color),
+                        part(rounded(l - 0.2, w - 0.1, r: 0.3), 1.0, 2.4, glass),
+                        part(rounded(l, w, r: 0.35), 2.4, 3.2, color),
+                        part(rounded(0.12, w * 0.8, r: 0.05, from: l / 2), 0.5, 0.9, light)]
+            case .lightTruck, .heavyTruck, .trailer:
+                let l = type == .lightTruck ? 6.5 : 16.0, w = type == .lightTruck ? 2.2 : 2.55, cab = 2.3
+                return [part(rounded(cab, w, r: 0.3, from: l / 2 - cab / 2), 0, 1.7, color),
+                        part(rounded(cab * 0.6, w - 0.2, r: 0.2, from: l / 2 - cab * 0.35), 1.7, 2.9, glass),
+                        part(rounded(l - cab - 0.3, w, r: 0.15, from: -cab / 2 - 0.15), 0, 3.6, "#dfe3e8"),
+                        part(rounded(0.12, w * 0.8, r: 0.05, from: l / 2), 0.6, 1.0, light)]
+            default:
+                let l = 4.6, w = 1.9
+                return [part(rounded(l, w, r: 0.45), 0, 0.85, color),
+                        part(rounded(l * 0.5, w * 0.84, r: 0.35, from: -l * 0.08), 0.85, 1.45, glass),
+                        part(rounded(0.12, w * 0.75, r: 0.05, from: l / 2), 0.45, 0.7, light)]
+            }
         }
 
         /// One filled quad per lane segment, `width` metres wide.
@@ -470,5 +543,49 @@ private struct MapLibre3DContainer: UIViewRepresentable {
                 return f
             }
         }
+    }
+}
+
+/// Navigation arrow for the own position: turns with the driving direction and tilts with the
+/// map, so it lies flat on the road like in a car navigation system.
+private final class NavArrowView: MLNUserLocationAnnotationView {
+    static let reuseId = "cits-nav-arrow"
+    private let arrow = CAShapeLayer()
+    private var lastCourse: Double = 0
+
+    override func update() {
+        if frame.size == .zero {
+            frame = CGRect(x: 0, y: 0, width: 54, height: 54)
+            setNeedsLayout()
+        }
+        if arrow.superlayer == nil {
+            let p = UIBezierPath()
+            p.move(to: CGPoint(x: 27, y: 4))
+            p.addLine(to: CGPoint(x: 47, y: 48))
+            p.addLine(to: CGPoint(x: 27, y: 37))
+            p.addLine(to: CGPoint(x: 7, y: 48))
+            p.close()
+            arrow.frame = CGRect(x: 0, y: 0, width: 54, height: 54)
+            arrow.path = p.cgPath
+            arrow.fillColor = UIColor(red: 0.12, green: 0.44, blue: 0.85, alpha: 1).cgColor
+            arrow.strokeColor = UIColor.white.cgColor
+            arrow.lineWidth = 3.5
+            arrow.lineJoin = .round
+            arrow.shadowColor = UIColor.black.cgColor
+            arrow.shadowOpacity = 0.35
+            arrow.shadowRadius = 4
+            arrow.shadowOffset = CGSize(width: 0, height: 2)
+            layer.addSublayer(arrow)
+        }
+        guard let mapView else { return }
+        if let course = userLocation?.location?.course, course >= 0 { lastCourse = course }
+        var t = CATransform3DIdentity
+        t.m34 = -1 / 400
+        t = CATransform3DRotate(t, CGFloat(mapView.camera.pitch * .pi / 180), 1, 0, 0)
+        t = CATransform3DRotate(t, CGFloat((lastCourse - mapView.direction) * .pi / 180), 0, 0, 1)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        arrow.transform = t
+        CATransaction.commit()
     }
 }
