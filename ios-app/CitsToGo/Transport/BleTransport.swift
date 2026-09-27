@@ -33,6 +33,9 @@ protocol BleTransportDelegate: AnyObject {
     /// Link dropped before encryption was established: pairing was cancelled or the PIN
     /// was wrong (older firmware: phone not enrolled over USB).
     func bleTransportRejectedUnenrolled(_ t: BleTransport)
+    /// The receiver no longer knows this iPhone (reflashed/erased) while iOS still holds the old keys.
+    /// iOS will not pair again by itself; the user has to ignore the device in Settings › Bluetooth.
+    func bleTransportPairingLost(_ t: BleTransport)
     /// Human-readable connection event for the in-app diagnostic log.
     func bleTransport(_ t: BleTransport, log message: String)
 }
@@ -72,6 +75,14 @@ final class BleTransport: NSObject {
     }
 
     private func log(_ message: String) { delegate?.bleTransport(self, log: message) }
+
+    /// True (and reported) when `error` means the board dropped our bond.
+    private func checkPairingLost(_ error: Error?) -> Bool {
+        guard let code = (error as? CBError)?.code, code == .peerRemovedPairingInformation else { return false }
+        log("Empfänger kennt dieses iPhone nicht mehr (neu geflasht?) – in iOS unter Bluetooth ignorieren")
+        delegate?.bleTransportPairingLost(self)
+        return true
+    }
 
     var knownPeripheralId: UUID? {
         get { UserDefaults.standard.string(forKey: Self.knownPeripheralKey).flatMap(UUID.init(uuidString:)) }
@@ -215,6 +226,11 @@ extension BleTransport: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
         if let current = peripheral, current.identifier != p.identifier { return }
+        if checkPairingLost(error) {
+            state = .disconnected("Kopplung auf dem Empfänger gelöscht")
+            peripheral = nil
+            return
+        }
         state = .disconnected(error?.localizedDescription ?? "Verbindung fehlgeschlagen")
         peripheral = nil
         queue.asyncAfter(deadline: .now() + 2) { self.connectIfPossible() }
@@ -223,6 +239,13 @@ extension BleTransport: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         // A cancelled pending connection to a previously stored board is not our link.
         if let current = peripheral, current.identifier != p.identifier { return }
+        if checkPairingLost(error) {
+            secured = false
+            rx = nil; tx = nil
+            peripheral = nil
+            state = .disconnected("Kopplung auf dem Empfänger gelöscht")
+            return
+        }
         let wasSecured = secured
         log("Getrennt (gesichert: \(wasSecured ? "ja" : "nein")): \(error?.localizedDescription ?? "ohne Fehler")")
         secured = false
@@ -271,6 +294,7 @@ extension BleTransport: CBPeripheralDelegate {
         writeInFlight = false
         if let error {
             log("Schreibfehler: \(error.localizedDescription)")
+            if checkPairingLost(error) { central.cancelPeripheralConnection(p); return }
             if !secured {
                 state = .disconnected("Kopplung fehlgeschlagen: \(error.localizedDescription)")
                 central.cancelPeripheralConnection(p)

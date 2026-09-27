@@ -65,6 +65,7 @@ final class BridgeModel {
     private(set) var customCounters: (published: UInt64, dropped: UInt64, spooled: Int) = (0, 0, 0)
     private(set) var recordingURL: URL?
     var showEnrollmentHint = false
+    var showPairingLostHint = false
     /// Result of the last PIN change (nil while none pending/finished).
     var pinChangeMessage: String?
     private(set) var eventLog: [LogEntry] = []
@@ -273,9 +274,10 @@ final class BridgeModel {
         let now = Date()
         if let s = d.linkState {
             linkState = s
-            if s.isStreaming { showEnrollmentHint = false }
+            if s.isStreaming { showEnrollmentHint = false; showPairingLostHint = false }
         }
         if d.rejectedUnenrolled { showEnrollmentHint = true }
+        if d.pairingLost { showPairingLostHint = true }
         for (date, message) in d.log { record(message, at: date) }
         if let f = d.statistics { firmware = f }
         if let i = d.intersections { intersections = i }

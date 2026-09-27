@@ -23,6 +23,7 @@ struct PipelineDrain {
     var statistics: FirmwareStatistics?
     var linkState: BleLinkState?
     var rejectedUnenrolled = false
+    var pairingLost = false
     var protocolErrors = 0
     var missingSequences: UInt32 = 0
     var lastError: String?
@@ -270,6 +271,10 @@ final class PacketPipeline: BleTransportDelegate {
 
     func bleTransportRejectedUnenrolled(_ t: BleTransport) {
         pending.rejectedUnenrolled = true
+    }
+
+    func bleTransportPairingLost(_ t: BleTransport) {
+        pending.pairingLost = true
     }
 
     func bleTransport(_ t: BleTransport, log message: String) {

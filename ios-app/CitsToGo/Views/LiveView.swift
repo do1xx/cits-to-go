@@ -36,7 +36,9 @@ struct LiveView: View {
                 Section {
                     StatusCard()
                 }
-                if model.showEnrollmentHint {
+                if model.showPairingLostHint {
+                    Section { PairingLostHint() }
+                } else if model.showEnrollmentHint {
                     Section { EnrollmentHint() }
                 }
                 if !model.countsByType.isEmpty {
@@ -146,6 +148,23 @@ private struct Metric: View {
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+struct PairingLostHint: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Empfänger kennt dieses iPhone nicht mehr", systemImage: "link.badge.plus")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
+            Text("Der Empfänger wurde neu geflasht oder zurückgesetzt. So koppelst du neu:")
+                .font(.caption)
+            Text("1. iOS-Einstellungen › Bluetooth › „CITS-to-go“ (i) › „Dieses Gerät ignorieren“\n2. Hier auf „Verbinden“ tippen und den Code eingeben (ab Werk 666666)")
+                .font(.caption)
+            Button("Bluetooth-Einstellungen öffnen") {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            }
+            .font(.caption.weight(.semibold))
+        }
     }
 }
 

@@ -39,7 +39,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Kopplungscode ändern")
                 } footer: {
-                    Text("Nur möglich, während dieses iPhone mit dem Empfänger verbunden ist. Bereits gekoppelte Handys bleiben gekoppelt, neue brauchen den neuen PIN. Wer den PIN vergisst, kann ihn per USB auf cits.dirksreich.de auslesen.")
+                    Text("Nur möglich, während dieses iPhone mit dem Empfänger verbunden ist. Bereits gekoppelte Handys bleiben gekoppelt, neue brauchen den neuen PIN. Der Code bleibt auch bei Firmware-Updates über die Flash-Seite erhalten.")
                 }
 
                 Section {

@@ -28,7 +28,7 @@ jobs:
           short="${GITHUB_SHA::7}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "short=$short" >> "$GITHUB_OUTPUT"
-          echo "file=CITS-to-go-firmware-v$version-$short.bin" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version-$short" >> "$GITHUB_OUTPUT"
 
       - name: Build (gepinnter ESP-IDF-Container)
         working-directory: firmware
@@ -37,10 +37,15 @@ jobs:
           docker run --rm -v "$PWD":/project -w /project cits-to-go-rust ./scripts/build.sh
           sudo chown -R "$(id -u):$(id -g)" .
 
+      # Three parts instead of one merged image: a merged image starting at 0x0 also
+      # overwrites the NVS partition (0x9000) and would wipe Bluetooth pairings and the PIN.
       - name: Pakete
         run: |
+          t="${{ steps.v.outputs.tag }}"
           mkdir -p out
-          cp firmware/dist/cits-to-go-firmware-rs.bin "out/${{ steps.v.outputs.file }}"
+          cp firmware/build/bootloader/bootloader.bin "out/CITS-to-go-bootloader-$t.bin"
+          cp firmware/build/partition_table/partition-table.bin "out/CITS-to-go-partitions-$t.bin"
+          cp firmware/build/cits-to-go-firmware-rs.bin "out/CITS-to-go-firmware-$t.bin"
           cat > out/manifest.json <<JSON
           {
             "name": "CITS-to-go",
@@ -49,11 +54,18 @@ jobs:
             "builds": [
               {
                 "chipFamily": "ESP32-C5",
-                "parts": [{ "path": "${{ steps.v.outputs.file }}", "offset": 0 }]
+                "parts": [
+                  { "path": "CITS-to-go-bootloader-$t.bin", "offset": 8192 },
+                  { "path": "CITS-to-go-partitions-$t.bin", "offset": 32768 },
+                  { "path": "CITS-to-go-firmware-$t.bin", "offset": 65536 }
+                ]
               }
             ]
           }
           JSON
+          cat > out/FLASHEN.txt <<TXT
+          esptool --chip esp32c5 write-flash 0x2000 CITS-to-go-bootloader-$t.bin 0x8000 CITS-to-go-partitions-$t.bin 0x10000 CITS-to-go-firmware-$t.bin
+          TXT
           (cd out && sha256sum *.bin > SHA256SUMS && cat SHA256SUMS)
 
       - name: Release
@@ -61,9 +73,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="firmware-v${{ steps.v.outputs.version }}-${{ steps.v.outputs.short }}"
-          gh release create "$tag" out/*.bin out/SHA256SUMS \
+          gh release create "$tag" out/*.bin out/SHA256SUMS out/FLASHEN.txt \
             --title "Firmware ${{ steps.v.outputs.version }} (${{ steps.v.outputs.short }})" \
-            --notes "Automatisch gebaut aus ${{ github.sha }}. Flashen: https://cits.dirksreich.de/flash.html"
+            --notes "Automatisch gebaut aus ${{ github.sha }}. Flashen: https://cits.dirksreich.de/flash.html oder mit esptool wie in FLASHEN.txt (Kopplungen und PIN bleiben erhalten)."
 
       - name: Auf cits.dirksreich.de veröffentlichen
         env:
@@ -73,5 +85,5 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
           printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
-          tar -cf - -C out manifest.json "${{ steps.v.outputs.file }}" \
+          tar -cf - -C out manifest.json $(cd out && ls CITS-to-go-*.bin) \
             | ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes citsdeploy@157.90.16.145
