@@ -59,6 +59,10 @@
   .warnings td:first-child { color: var(--red); font-weight: 700; }
   .note { color: var(--muted); font-size: 0.9rem; margin-top: 1.5rem; max-width: 50rem; }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } #map { height: 22rem; } }
+  @media (max-width: 640px) {
+    .topbar .inner { flex-wrap: wrap; row-gap: 0.4rem; }
+    .topbar nav { margin-left: 0; width: 100%; flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; }
+  }
 </style>
 </head>
 <body>
@@ -71,6 +75,7 @@
       <a href="live.html" aria-current="page">Live</a>
       <a href="stats.html">Statistik</a>
       <a href="coverage.html">Empfangskarte</a>
+      <a href="receiver.html">Mein Empfänger</a>
     </nav>
   </div>
 </header>
@@ -125,7 +130,7 @@
   const counts = {};
   let total = 0;
 
-  const map = L.map("map", { zoomControl: true }).setView([53.55, 10.0], 10);
+  const map = L.map("map", { zoomControl: true, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false }).setView([53.55, 10.0], 10);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
@@ -143,7 +148,8 @@
     const rows = [...nodes.entries()].sort((a, b) => (b[1].last || 0) - (a[1].last || 0)).map(([id, n]) => {
       const recent = n.last && Date.now() - n.last < 120000;
       const status = n.online === false ? '<span class="offline">offline</span>' : (recent || n.online) ? '<span class="online">online</span>' : '<span class="offline">still</span>';
-      const label = n.info?.name ? `${esc(n.info.name)}<br><span class="mono muted">${esc(id)}</span>` : `<span class="mono">${esc(id)}</span>`;
+      const link = `receiver.html?node=${encodeURIComponent(id)}`;
+      const label = n.info?.name ? `<a href="${link}">${esc(n.info.name)}</a><br><span class="mono muted">${esc(id)}</span>` : `<a class="mono" href="${link}">${esc(id)}</a>`;
       return `<tr><td>${label}</td><td>${status}</td><td class="num">${n.packets}</td><td class="num">${n.last ? ago(n.last) : "–"}</td></tr>`;
     });
     $("nodes").innerHTML = rows.join("");

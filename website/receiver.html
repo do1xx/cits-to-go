@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CITS-to-go – Mein Empfänger</title>
+<meta name="description" content="Was ein einzelner CITS-to-go-Empfänger in den letzten 24 Stunden empfangen und hochgeladen hat.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #1f2428; --muted: #5d6770; --rule: #dfe3e6; --bg: #ffffff; --tint: #f4f6f7;
+    --accent: #0b4f8a; --red: #c4231c; --green: #1c8a43; --bar: #256abf;
+    --mono: "Overpass Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Overpass", system-ui, sans-serif; font-size: 1rem; line-height: 1.5; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); text-underline-offset: 0.18em; }
+  :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; }
+  .topbar { border-bottom: 1px solid var(--rule); }
+  .topbar .inner { max-width: 50rem; margin: 0 auto; padding: 0.7rem 1rem; display: flex; align-items: center; gap: 0.4rem 1.25rem; flex-wrap: wrap; }
+  .logo { display: flex; align-items: center; gap: 0.55rem; white-space: nowrap; font-weight: 800; color: var(--ink); text-decoration: none; }
+  .logo img { width: 1.7rem; height: 1.7rem; border-radius: 0.4rem; }
+  .topbar nav { margin-left: auto; display: flex; gap: 1.1rem; font-size: 0.95rem; overflow-x: auto; white-space: nowrap; max-width: 100%; }
+  .topbar nav a { color: var(--muted); text-decoration: none; }
+  main { max-width: 50rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 0.2rem; word-break: break-word; }
+  h2 { font-size: 1.1rem; font-weight: 800; margin: 2rem 0 0.6rem; }
+  .status { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 700; }
+  .led { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #9aa5ae; }
+  .led.on { background: var(--green); box-shadow: 0 0 0 4px rgba(28, 138, 67, 0.15); }
+  .muted { color: var(--muted); }
+  .small { font-size: 0.9rem; }
+  form { display: flex; gap: 0.5rem; margin: 0.5rem 0 1.5rem; }
+  input { font: inherit; flex: 1; min-width: 0; padding: 0.55rem 0.7rem; border: 1px solid var(--rule); border-radius: 0.45rem; }
+  button { font: inherit; font-weight: 700; padding: 0.55rem 1rem; border: 0; border-radius: 0.45rem; background: var(--accent); color: #fff; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; margin: 1.2rem 0 0; }
+  .kpi { border-left: 3px solid var(--accent); padding-left: 0.7rem; }
+  .kpi b { display: block; font-size: 1.8rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--muted); font-size: 0.85rem; }
+  .spark { display: flex; align-items: flex-end; gap: 2px; height: 4rem; margin-top: 0.4rem; border-bottom: 1px solid var(--rule); }
+  .spark i { flex: 1; background: var(--bar); border-radius: 2px 2px 0 0; min-height: 0; }
+  .axis { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); }
+  #map { height: 16rem; border: 1px solid var(--rule); border-radius: 0.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem 0.4rem 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 700; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .warn { color: var(--red); font-weight: 700; }
+  .empty { color: var(--muted); padding: 0.5rem 0; }
+  .hint { background: var(--tint); border-radius: 0.5rem; padding: 0.8rem 1rem; margin-top: 1rem; font-size: 0.93rem; }
+  @media (max-width: 600px) {
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .topbar nav { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="inner">
+    <a class="logo" href="./"><img src="img/icon.png" alt="">CITS-to-go</a>
+    <nav>
+      <a href="live.html">Live</a>
+      <a href="stats.html">Statistik</a>
+      <a href="coverage.html">Empfangskarte</a>
+      <a href="flash.html">Flashen</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <form id="pick">
+    <input id="node" name="node" placeholder="Node-ID, z. B. SmarduPilot" autocomplete="off" aria-label="Node-ID des Empfängers">
+    <button>Anzeigen</button>
+  </form>
+
+  <div id="out" hidden>
+    <h1 id="title"></h1>
+    <div><span class="status"><span class="led" id="led"></span><span id="state"></span></span> <span class="muted small" id="hw"></span></div>
+    <p class="muted small" id="last"></p>
+
+    <div class="kpis">
+      <div class="kpi"><b id="k-hour">–</b><span>letzte Stunde</span></div>
+      <div class="kpi"><b id="k-today">–</b><span>heute</span></div>
+      <div class="kpi"><b id="k-24">–</b><span>24 Stunden</span></div>
+      <div class="kpi"><b id="k-st">–</b><span>Sender (24 h)</span></div>
+    </div>
+
+    <h2>Nachrichten pro Stunde</h2>
+    <div class="spark" id="spark" role="img" aria-label="Nachrichten pro Stunde, letzte 24 Stunden"></div>
+    <div class="axis"><span>vor 24 h</span><span>jetzt</span></div>
+
+    <h2>Typen (24 h)</h2>
+    <div id="types"></div>
+
+    <h2>Woher (24 h)</h2>
+    <div id="map"></div>
+    <p class="muted small">Positionen, die die Sender selbst angeben. Nicht die Position des Empfängers.</p>
+
+    <h2>Letzte Nachrichten</h2>
+    <div class="scroll" id="recent"></div>
+    <p class="muted small" id="updated"></p>
+  </div>
+  <div id="none" class="hint" hidden></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const fmt = new Intl.NumberFormat("de-DE");
+const tFmt = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const dFmt = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const TYPES = { 5: "Pkw", 6: "Bus", 7: "Kleintransporter", 8: "Lkw", 10: "Sonderfahrzeug", 15: "Ampel/RSU", 2: "Rad", 1: "Fußgänger", 4: "Motorrad", 3: "Moped", 11: "Straßenbahn" };
+const HOUR = 3600e3;
+
+function ago(d) {
+  const s = (Date.now() - d) / 1000;
+  if (s < 60) return "gerade eben";
+  if (s < 3600) return `vor ${Math.round(s / 60)} min`;
+  if (s < 86400) return `vor ${Math.round(s / 3600)} h`;
+  return `vor ${Math.round(s / 86400)} Tagen`;
+}
+
+let map, layer;
+function drawMap(cells) {
+  if (!map) {
+    // One finger scrolls the page on phones; pinch still zooms.
+    map = L.map("map", { scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false }).setView([53.55, 10.0], 10);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+    layer = L.layerGroup().addTo(map);
+  }
+  layer.clearLayers();
+  for (const c of cells) {
+    L.circleMarker([c.lat, c.lon], { radius: 6, stroke: true, color: "#fff", weight: 1, fillColor: c.n >= 20 ? "#104281" : c.n >= 5 ? "#2a78d6" : "#86b6ef", fillOpacity: 0.9 })
+      .bindTooltip(`${fmt.format(c.n)} Nachrichten`).addTo(layer);
+  }
+  if (cells.length) map.fitBounds(L.latLngBounds(cells.map(c => [c.lat, c.lon])).pad(0.2), { maxZoom: 15 });
+}
+
+async function load(node) {
+  const res = await fetch(`api/receiver?node=${encodeURIComponent(node)}`);
+  if (!res.ok) throw new Error(`Server antwortet mit ${res.status}`);
+  const d = await res.json();
+  const none = document.getElementById("none"), out = document.getElementById("out");
+  if (!d.known && !d.totals.last_24h) {
+    out.hidden = true; none.hidden = false;
+    none.innerHTML = `Für <b>${esc(node)}</b> ist noch nichts angekommen. In der App muss MQTT eingeschaltet sein, bei Android mit der Adresse <code>mqtts://mqtt.dirksreich.de:8883</code>, und die Node-ID muss genau so geschrieben sein.`;
+    return;
+  }
+  none.hidden = true; out.hidden = false;
+  const r = d.receiver || {};
+  document.title = `CITS-to-go – ${node}`;
+  document.getElementById("title").textContent = r.name || node;
+  const online = r.status === "online";
+  document.getElementById("led").className = "led" + (online ? " on" : "");
+  document.getElementById("state").textContent = online ? "online" : "offline";
+  document.getElementById("hw").textContent = [r.hardware === "ios-ble-bridge" ? "iPhone" : r.hardware === "android-usb-bridge" ? "Android" : r.hardware === "cits-to-go-usb" ? "fester Empfänger" : r.hardware, r.software].filter(Boolean).join(" · ");
+  const last = d.last_packet_ever ? new Date(d.last_packet_ever) : null;
+  document.getElementById("last").textContent = last ? `Letzte Nachricht ${ago(last)} (${dFmt.format(last)} Uhr)` : "Noch keine Nachricht empfangen.";
+
+  const t = d.totals;
+  document.getElementById("k-hour").textContent = fmt.format(t.last_hour);
+  document.getElementById("k-today").textContent = fmt.format(t.today);
+  document.getElementById("k-24").textContent = fmt.format(t.last_24h);
+  document.getElementById("k-st").textContent = fmt.format(t.stations_24h);
+
+  const counts = new Map(d.hourly.map(h => [new Date(h.hour).getTime(), h.packets]));
+  const end = Math.floor(Date.now() / HOUR) * HOUR;
+  const series = []; for (let x = end - 23 * HOUR; x <= end; x += HOUR) series.push({ x, n: counts.get(x) || 0 });
+  const max = Math.max(1, ...series.map(s => s.n));
+  document.getElementById("spark").innerHTML = series.map(s =>
+    `<i style="height:${s.n ? Math.max(4, 100 * s.n / max) : 0}%" title="${new Date(s.x).getHours()} Uhr: ${fmt.format(s.n)}"></i>`).join("");
+
+  document.getElementById("types").innerHTML = d.types.length
+    ? `<table><tbody>${d.types.map(x => `<tr><td><b>${esc(x.type)}</b></td><td class="num">${fmt.format(x.n)}</td></tr>`).join("")}</tbody></table>`
+    : `<p class="empty">In den letzten 24 Stunden nichts empfangen.</p>`;
+
+  drawMap(d.cells);
+
+  document.getElementById("recent").innerHTML = d.recent.length
+    ? `<table><thead><tr><th>Zeit</th><th>Typ</th><th>Inhalt</th></tr></thead><tbody>${d.recent.map(m => {
+        const when = new Date(m.time);
+        const what = m.msg_type === "DENM" ? `<span class="warn">⚠ ${esc(m.cause || "Warnung")}</span>`
+          : m.msg_type === "CAM" ? [TYPES[m.station_type], m.speed_kmh != null ? `${m.speed_kmh} km/h` : null].filter(Boolean).join(", ")
+          : m.msg_type ? "" : "kein C-ITS";
+        return `<tr><td>${(Date.now() - when) < 86400e3 ? tFmt.format(when) : dFmt.format(when)}</td><td><b>${esc(m.msg_type || "–")}</b></td><td>${what}</td></tr>`;
+      }).join("")}</tbody></table>`
+    : `<p class="empty">Noch keine Nachrichten.</p>`;
+  document.getElementById("updated").textContent = `Aktualisiert ${tFmt.format(new Date())}, alle 20 Sekunden.`;
+}
+
+const params = new URLSearchParams(location.search);
+const node = params.get("node");
+const input = document.getElementById("node");
+document.getElementById("pick").addEventListener("submit", e => {
+  e.preventDefault();
+  const v = input.value.trim();
+  if (v) location.search = `?node=${encodeURIComponent(v)}`;
+});
+if (node) {
+  input.value = node;
+  const run = () => load(node).catch(err => { document.getElementById("updated").textContent = `Fehler: ${err.message}`; });
+  run();
+  setInterval(run, 20000);
+}
+</script>
+</body>
+</html>

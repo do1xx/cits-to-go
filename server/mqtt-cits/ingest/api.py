@@ -61,6 +61,39 @@ def stats():
     return {"totals": totals, "hourly": hourly, "types": types, "receivers": receivers, "warnings": warnings[:50]}
 
 
+def receiver(node):
+    """Everything one receiver sent: status, counts, types, hourly series, recent messages, map cells."""
+    node = node.strip()[:64]
+    info = query("""
+        SELECT node, name, status, info->>'hwv' AS hardware, info->>'ver' AS software
+        FROM receivers WHERE node = %s""", (node,))
+    totals = query("""
+        SELECT count(*) FILTER (WHERE time > now() - interval '1 hour') AS last_hour,
+               count(*) FILTER (WHERE time > date_trunc('day', now() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin') AS today,
+               count(*) AS last_24h,
+               count(DISTINCT station_id) AS stations_24h,
+               max(time) AS last_packet
+        FROM packets WHERE node = %s AND time > now() - interval '24 hours'""", (node,))[0]
+    last_ever = query("SELECT max(time) AS t FROM packets WHERE node = %s", (node,))[0]["t"]
+    types = query("""
+        SELECT coalesce(msg_type, 'kein C-ITS') AS type, count(*) AS n
+        FROM packets WHERE node = %s AND time > now() - interval '24 hours' GROUP BY 1 ORDER BY 2 DESC""", (node,))
+    hourly = query("""
+        SELECT time_bucket('1 hour', time) AS hour, count(*) AS packets
+        FROM packets WHERE node = %s AND time > now() - interval '24 hours' GROUP BY 1 ORDER BY 1""", (node,))
+    recent = query("""
+        SELECT time, msg_type, station_id, station_type, round(speed_kmh::numeric)::int AS speed_kmh, denm_cause
+        FROM packets WHERE node = %s ORDER BY time DESC LIMIT 25""", (node,))
+    for r in recent:
+        r["cause"] = CAUSES.get(r.pop("denm_cause")) if r["msg_type"] == "DENM" else None
+    cells = query("""
+        SELECT round(lat::numeric, 3)::float AS lat, round(lon::numeric, 3)::float AS lon, count(*) AS n
+        FROM packets WHERE node = %s AND lat IS NOT NULL AND time > now() - interval '24 hours'
+        GROUP BY 1, 2""", (node,))
+    return {"node": node, "known": bool(info), "receiver": info[0] if info else None, "totals": totals,
+            "last_packet_ever": last_ever, "types": types, "hourly": hourly, "recent": recent, "cells": cells}
+
+
 def coverage(days):
     days = max(1, min(days, 90))
     rows = query("""
@@ -78,11 +111,14 @@ class Handler(BaseHTTPRequestHandler):
         key = self.path
         hit = CACHE.get(key)
         try:
-            if hit and time.time() - hit[0] < TTL:
+            ttl = 20 if url.path == "/receiver" else TTL
+            if hit and time.time() - hit[0] < ttl:
                 body = hit[1]
             else:
                 if url.path == "/stats":
                     data = stats()
+                elif url.path == "/receiver":
+                    data = receiver(q.get("node", [""])[0])
                 elif url.path == "/coverage":
                     data = coverage(int(q.get("days", ["7"])[0]))
                 else:

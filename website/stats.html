@@ -65,6 +65,10 @@
   .error { color: var(--red); }
   .note { color: var(--muted); font-size: 0.9rem; margin-top: 2.5rem; max-width: 50rem; }
   @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .two { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) {
+    .topbar .inner { flex-wrap: wrap; row-gap: 0.4rem; }
+    .topbar nav { margin-left: 0; width: 100%; flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; }
+  }
 </style>
 </head>
 <body>
@@ -77,6 +81,7 @@
       <a href="live.html">Live</a>
       <a href="stats.html" aria-current="page">Statistik</a>
       <a href="coverage.html">Empfangskarte</a>
+      <a href="receiver.html">Mein Empfänger</a>
     </nav>
   </div>
 </header>
@@ -223,7 +228,7 @@ function render(data) {
   }</tbody></table>` : `<p class="empty">Noch keine Nachrichten.</p>`;
 
   document.getElementById("receivers").innerHTML = `<table><thead><tr><th>Empfänger</th><th>Art</th><th>Zuletzt</th><th class="num">24 h</th></tr></thead><tbody>${
-    data.receivers.map(r => `<tr><td>${r.name ? esc(r.name) + ` <span class="mono muted">${esc(r.node)}</span>` : `<span class="mono">${esc(r.node)}</span>`}</td>
+    data.receivers.map(r => `<tr><td><a href="receiver.html?node=${encodeURIComponent(r.node)}">${r.name ? esc(r.name) + ` <span class="mono muted">${esc(r.node)}</span>` : `<span class="mono">${esc(r.node)}</span>`}</a></td>
       <td class="muted">${r.hardware === "ios-ble-bridge" ? "iPhone (mobil)" : r.hardware === "cits-to-go-usb" ? "fest (USB)" : esc(r.hardware || "–")}</td>
       <td>${r.status === "online" ? `<span class="online">online</span>` : r.last_packet ? ago(new Date(r.last_packet)) : `<span class="muted">nie</span>`}</td>
       <td class="num">${fmt.format(r.packets_24h)}</td></tr>`).join("")
