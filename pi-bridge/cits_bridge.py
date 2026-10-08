@@ -4,7 +4,7 @@
 Reads the CTG1 record stream of the CITS-to-go ESP32-C5 firmware over USB serial and
 publishes every captured frame to MQTT in the OpenTrafficMap topic layout:
 
-    its/<node>/packet   raw IEEE 802.11 frame (binary, QoS 0)
+    its/<node>/packet   raw IEEE 802.11 frame (binary, QoS 1, buffered while offline)
     its/<node>/status   "online" (retained) / last will "offline"
     its/<node>/info     JSON: node, software, hardware, name, lat, lon (retained)
     its/<node>/stats    JSON every 60 s: uptime, packet counters, firmware statistics
@@ -30,7 +30,7 @@ from urllib.parse import unquote, urlparse
 import paho.mqtt.client as mqtt
 import serial
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 TYPE_CAPTURE, TYPE_STATISTICS = 1, 6
 
 
@@ -107,7 +107,10 @@ class Target:
         client.publish(self.prefix + "info", json.dumps(self.info, ensure_ascii=False), qos=1, retain=True)
 
     def publish(self, leaf, payload, retain=False):
-        info = self.client.publish(self.prefix + leaf, payload, qos=0, retain=retain)
+        # Packets go out with QoS 1: paho then keeps them (up to CITS_MAX_QUEUE) while the
+        # broker is unreachable and delivers them after the reconnect. QoS 0 would be lost.
+        qos = 1 if leaf == "packet" else 0
+        info = self.client.publish(self.prefix + leaf, payload, qos=qos, retain=retain)
         if leaf == "packet":
             if info.rc == mqtt.MQTT_ERR_QUEUE_SIZE:
                 self.dropped += 1
