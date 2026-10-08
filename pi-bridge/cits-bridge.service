@@ -6,6 +6,8 @@ Wants=network-online.target
 [Service]
 User=cits
 Group=dialout
+# Espressif USB-JTAG/serial devices belong to plugdev on Debian/Raspberry Pi OS
+SupplementaryGroups=plugdev
 EnvironmentFile=/etc/cits-bridge.env
 ExecStart=/opt/cits-bridge/venv/bin/python /opt/cits-bridge/cits_bridge.py
 Restart=always
